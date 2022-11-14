@@ -6,64 +6,6 @@ import numpy as np
 from box import Box
 
 
-_palette_dict = {
-    "ndvi": [
-        "FFFFFF",
-        "CE7E45",
-        "DF923D",
-        "F1B555",
-        "FCD163",
-        "99B718",
-        "74A901",
-        "66A000",
-        "529400",
-        "3E8601",
-        "207401",
-        "056201",
-        "004C00",
-        "023B01",
-        "012E01",
-        "011D01",
-        "011301",
-    ],
-    "ndwi": [
-        "#ece7f2",
-        "#d0d1e6",
-        "#a6bddb",
-        "#74a9cf",
-        "#3690c0",
-        "#0570b0",
-        "#045a8d",
-        "#023858",
-    ],
-    "dem": ["006633", "E5FFCC", "662A00", "D8D8D8", "F5F5F5"],
-    "dw": [
-        "#419BDF",
-        "#397D49",
-        "#88B053",
-        "#7A87C6",
-        "#E49635",
-        "#DFC35A",
-        "#C4281B",
-        "#A59B8F",
-        "#B39FE1",
-    ],
-    "esri_lulc": [
-        "#1A5BAB",
-        "#358221",
-        "#000000",
-        "#87D19E",
-        "#FFDB5C",
-        "#000000",
-        "#ED022A",
-        "#EDE9E4",
-        "#F2FAFF",
-        "#C8C8C8",
-        "#C6AD8D",
-    ],
-}
-
-
 def get_palette(cmap_name=None, n_class=None, hashtag=False):
     """Get a palette from a matplotlib colormap. See the list of colormaps at https://matplotlib.org/stable/tutorials/colors/colormaps.html.
 
@@ -76,7 +18,7 @@ def get_palette(cmap_name=None, n_class=None, hashtag=False):
         list: A list of hex colors.
     """
 
-    if cmap_name in _palette_dict.keys():
+    if cmap_name in ["dem", "ndvi", "ndwi"]:
         colors = _palette_dict[cmap_name]
     else:
         cmap = plt.cm.get_cmap(cmap_name, n_class)
@@ -215,6 +157,39 @@ def plot_colormaps(width=8.0, height=0.4):
 
     plt.show()
 
+
+_palette_dict = {
+    "ndvi": [
+        "FFFFFF",
+        "CE7E45",
+        "DF923D",
+        "F1B555",
+        "FCD163",
+        "99B718",
+        "74A901",
+        "66A000",
+        "529400",
+        "3E8601",
+        "207401",
+        "056201",
+        "004C00",
+        "023B01",
+        "012E01",
+        "011D01",
+        "011301",
+    ],
+    "ndwi": [
+        "#ece7f2",
+        "#d0d1e6",
+        "#a6bddb",
+        "#74a9cf",
+        "#3690c0",
+        "#0570b0",
+        "#045a8d",
+        "#023858",
+    ],
+    "dem": ["006633", "E5FFCC", "662A00", "D8D8D8", "F5F5F5"],
+}
 
 for index, cmap_name in enumerate(list_colormaps()):
     if index < len(list_colormaps()):

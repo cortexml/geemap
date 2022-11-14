@@ -2,7 +2,7 @@
 
 __author__ = """Qiusheng Wu"""
 __email__ = "giswqs@gmail.com"
-__version__ = "0.17.2"
+__version__ = "0.11.4"
 
 import os
 
@@ -28,17 +28,9 @@ def use_folium():
 if use_folium():
     from .foliumap import *
 else:
-    try:
-        from .geemap import *
-    except Exception as e:
-        if in_colab_shell():
-            print(
-                "Please restart Colab runtime after installation if you encounter any errors when importing geemap."
-            )
-        else:
-            print(
-                "Please restart Jupyter kernel after installation if you encounter any errors when importing geemap."
-            )
-        raise Exception(e)
+    from .geemap import *
 
-from .report import Report
+    if in_colab_shell():
+        from google.colab import output
+
+        output.enable_custom_widget_manager()

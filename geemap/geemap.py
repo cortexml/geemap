@@ -5,7 +5,6 @@ ipyleaflet functions use snake case, such as add_tile_layer(), add_wms_layer(), 
 
 import math
 import os
-import pkg_resources
 import time
 
 import ee
@@ -16,33 +15,30 @@ from box import Box
 from bqplot import pyplot as plt
 from ipyfilechooser import FileChooser
 from IPython.display import display
-from ipytree import Node, Tree
 from .basemaps import xyz_to_leaflet
 from .common import *
 from .conversion import *
 from .legends import builtin_legends
 from .timelapse import *
 from .osm import *
-from .plot import *
-
-from . import examples
 
 
-basemaps = Box(xyz_to_leaflet(), frozen_box=True)
+basemap_tiles = Box(xyz_to_leaflet(), frozen_box=True)
+
+basemaps = Box(
+    dict(zip(list(basemap_tiles.keys()), list(basemap_tiles.keys()))),
+    frozen_box=True,
+)
 
 
 class Map(ipyleaflet.Map):
-    """The Map class inherits from ipyleaflet.Map. The arguments you can pass to the Map can be found at https://ipyleaflet.readthedocs.io/en/latest/map_and_basemaps/map.html. By default, the Map will add Google Maps as the basemap. Set add_google_map = False to use OpenStreetMap as the basemap.
+    """The Map class inherits from ipyleaflet.Map. The arguments you can pass to the Map can be found at https://ipyleaflet.readthedocs.io/en/latest/api_reference/map.html. By default, the Map will add Google Maps as the basemap. Set add_google_map = False to use OpenStreetMap as the basemap.
 
     Returns:
         object: ipyleaflet map object.
     """
 
     def __init__(self, **kwargs):
-
-        import warnings
-
-        warnings.filterwarnings("ignore")
 
         # Authenticates Earth Engine and initializes an Earth Engine session
         if "ee_initialize" not in kwargs.keys():
@@ -58,11 +54,6 @@ class Map(ipyleaflet.Map):
         # Interchangeable parameters between ipyleaflet and folium
         if "height" not in kwargs.keys():
             kwargs["height"] = "600px"
-        elif isinstance(kwargs["height"], int):
-            kwargs["height"] = str(kwargs["height"]) + "px"
-        if "width" in kwargs.keys() and isinstance(kwargs["width"], int):
-            kwargs["width"] = str(kwargs["width"]) + "px"
-
         if "location" in kwargs.keys():
             kwargs["center"] = kwargs["location"]
             kwargs.pop("location")
@@ -125,7 +116,7 @@ class Map(ipyleaflet.Map):
             and isinstance(kwargs["basemap"], str)
             and kwargs["basemap"] in basemaps.keys()
         ):
-            kwargs["basemap"] = basemaps[kwargs["basemap"]]
+            kwargs["basemap"] = basemap_tiles[kwargs["basemap"]]
 
         if os.environ.get("USE_VOILA") is not None:
             kwargs["use_voila"] = True
@@ -165,7 +156,6 @@ class Map(ipyleaflet.Map):
         self.user_rois = None
         self.last_ee_data = None
         self.last_ee_layer = None
-        self.geojson_layers = []
 
         self.roi_start = False
         self.roi_end = False
@@ -209,9 +199,6 @@ class Map(ipyleaflet.Map):
         self.tool_output_ctrl = None
         self.layer_control = None
         self.convert_ctrl = None
-        self._expand_point = False
-        self._expand_pixels = True
-        self._expand_objects = False
 
         # Adds search button and search box
         search_button = widgets.ToggleButton(
@@ -242,7 +229,7 @@ class Map(ipyleaflet.Map):
         search_output = widgets.Output(
             layout={
                 "max_width": "340px",
-                "max_height": "350px",
+                "max_height": "250px",
                 "overflow": "scroll",
             }
         )
@@ -261,67 +248,15 @@ class Map(ipyleaflet.Map):
             layout=widgets.Layout(min_width="57px", max_width="57px"),
         )
 
-        def get_ee_example(asset_id):
-            try:
-                pkg_dir = os.path.dirname(
-                    pkg_resources.resource_filename("geemap", "geemap.py")
-                )
-                with open(
-                    os.path.join(pkg_dir, "data/gee_f.json"), encoding="utf-8"
-                ) as f:
-                    functions = json.load(f)
-                details = [
-                    dataset["code"]
-                    for x in functions["examples"]
-                    for dataset in x["contents"]
-                    if x["name"] == "Datasets"
-                    if dataset["name"] == asset_id.replace("/", "_")
-                ]
-
-                return js_snippet_to_py(
-                    details[0],
-                    add_new_cell=False,
-                    import_ee=False,
-                    import_geemap=False,
-                    show_map=False,
-                )
-
-            except Exception as e:
-                pass
-            return
-
         def import_btn_clicked(b):
             if assets_dropdown.value is not None:
                 datasets = self.search_datasets
                 dataset = datasets[assets_dropdown.index]
-                id_ = dataset["id"]
-                code = get_ee_example(id_)
-
-                if not code:
-                    dataset_uid = "dataset_" + random_string(string_length=3)
-                    translate = {
-                        "image_collection": "ImageCollection",
-                        "image": "Image",
-                        "table": "FeatureCollection",
-                        "table_collection": "FeatureCollection",
-                    }
-                    datatype = translate[dataset["type"]]
-                    id_ = dataset["id"]
-                    line1 = "{} = ee.{}('{}')".format(dataset_uid, datatype, id_)
-                    action = {
-                        "image_collection": f"\nMap.addLayer({dataset_uid}, {{}}, '{id_}')",
-                        "image": f"\nMap.addLayer({dataset_uid}, {{}}, '{id_}')",
-                        "table": f"\nMap.addLayer({dataset_uid}, {{}}, '{id_}')",
-                        "table_collection": f"\nMap.addLayer({dataset_uid}, {{}}, '{id_}')",
-                    }
-                    line2 = action[dataset["type"]]
-                    code = [line1, line2]
-
-                contents = "".join(code).strip()
+                dataset_uid = "dataset_" + random_string(string_length=3)
+                line1 = "{} = {}\n".format(dataset_uid, dataset["ee_id_snippet"])
+                line2 = "Map.addLayer(" + dataset_uid + ', {}, "' + dataset["id"] + '")'
+                contents = "".join([line1, line2])
                 create_code_cell(contents)
-                with search_output:
-                    search_output.clear_output(wait=True)
-                    print(contents)
 
         import_btn.on_click(import_btn_clicked)
 
@@ -370,14 +305,12 @@ class Map(ipyleaflet.Map):
         def search_type_changed(change):
             search_box.value = ""
             search_output.clear_output()
-            if change["new"] == "data":
-                search_box.placeholder = (
-                    "Search GEE data catalog by keywords, e.g., elevation"
-                )
+            if change["new"] == "name/address":
+                search_box.placeholder = "Search by place name or address, e.g., Paris"
+                assets_dropdown.options = []
                 search_result_widget.children = [
                     search_type,
                     search_box,
-                    assets_combo,
                     search_output,
                 ]
             elif change["new"] == "lat-lon":
@@ -388,12 +321,14 @@ class Map(ipyleaflet.Map):
                     search_box,
                     search_output,
                 ]
-            elif change["new"] == "name/address":
-                search_box.placeholder = "Search by place name or address, e.g., Paris"
-                assets_dropdown.options = []
+            elif change["new"] == "data":
+                search_box.placeholder = (
+                    "Search GEE data catalog by keywords, e.g., elevation"
+                )
                 search_result_widget.children = [
                     search_type,
                     search_box,
+                    assets_combo,
                     search_output,
                 ]
 
@@ -431,7 +366,7 @@ class Map(ipyleaflet.Map):
                     with search_output:
                         print("Searching ...")
                     self.default_style = {"cursor": "wait"}
-                    ee_assets = search_ee_data(text.value, source="all")
+                    ee_assets = search_ee_data(text.value)
                     self.search_datasets = ee_assets
                     asset_titles = [x["title"] for x in ee_assets]
                     assets_dropdown.options = asset_titles
@@ -547,7 +482,7 @@ class Map(ipyleaflet.Map):
             self.add_control(measure)
 
         if kwargs.get("add_google_map"):
-            self.add_layer(basemaps["ROADMAP"])
+            self.add_layer(basemap_tiles["ROADMAP"])
 
         if kwargs.get("attribution_ctrl"):
             self.add_control(ipyleaflet.AttributionControl(position="bottomright"))
@@ -631,17 +566,9 @@ class Map(ipyleaflet.Map):
         self.plot_checked = False
         self.inspector_checked = False
 
-        inspector_output = widgets.Output(
-            layout={
-                "border": "1px solid black",
-                "max_width": "600px",
-                "max_height": "530px",
-                "overflow": "auto",
-            }
-        )
+        inspector_output = widgets.Output(layout={"border": "1px solid black"})
         inspector_output_control = ipyleaflet.WidgetControl(
-            widget=inspector_output,
-            position="topright",
+            widget=inspector_output, position="topright"
         )
         tool_output = widgets.Output()
         self.tool_output = tool_output
@@ -694,12 +621,12 @@ class Map(ipyleaflet.Map):
                     tool_output.clear_output()
                     self.toolbar_button.value = False
                     time.sleep(1)
-                    screen_capture(filename=file_path)
+                    screen_capture(outfile=file_path)
                 elif save_type.value == "JPG" and ext.upper() == ".JPG":
                     tool_output.clear_output()
                     self.toolbar_button.value = False
                     time.sleep(1)
-                    screen_capture(filename=file_path)
+                    screen_capture(outfile=file_path)
                 else:
                     label = widgets.Label(
                         value="The selected file extension does not match the selected exporting type."
@@ -1058,22 +985,20 @@ class Map(ipyleaflet.Map):
                 def all_layers_chk_changed(change):
                     if change["new"]:
                         for layer in self.layers:
-                            if hasattr(layer, "visible"):
-                                layer.visible = True
+                            layer.visible = True
                     else:
                         for layer in self.layers:
-                            if hasattr(layer, "visible"):
-                                layer.visible = False
+                            layer.visible = False
 
                 all_layers_chk.observe(all_layers_chk_changed, "value")
 
                 layers = [
                     lyr
                     for lyr in self.layers[1:]
-                    # if (
-                    #     isinstance(lyr, ipyleaflet.TileLayer)
-                    #     or isinstance(lyr, ipyleaflet.WMSLayer)
-                    # )
+                    if (
+                        isinstance(lyr, ipyleaflet.TileLayer)
+                        or isinstance(lyr, ipyleaflet.WMSLayer)
+                    )
                 ]
 
                 # if the layers contain unsupported layers (e.g., GeoJSON, GeoData), adds the ipyleaflet built-in LayerControl
@@ -1086,29 +1011,15 @@ class Map(ipyleaflet.Map):
 
                 # for non-TileLayer, use layer.style={'opacity':0, 'fillOpacity': 0} to turn layer off.
                 for layer in layers:
-                    visible = True
-                    if hasattr(layer, "visible"):
-                        visible = layer.visible
                     layer_chk = widgets.Checkbox(
-                        value=visible,
+                        value=layer.visible,
                         description=layer.name,
                         indent=False,
                         layout=widgets.Layout(height="18px"),
                     )
                     layer_chk.layout.width = "25ex"
-
-                    if layer in self.geojson_layers:
-                        try:
-                            opacity = max(
-                                layer.style["opacity"], layer.style["fillOpacity"]
-                            )
-                        except KeyError:
-                            opacity = 1.0
-                    else:
-                        opacity = layer.opacity
-
                     layer_opacity = widgets.FloatSlider(
-                        value=opacity,
+                        value=layer.opacity,
                         min=0,
                         max=1,
                         step=0.01,
@@ -1122,13 +1033,6 @@ class Map(ipyleaflet.Map):
                             width="25px", height="25px", padding="0px 0px 0px 5px"
                         ),
                     )
-
-                    def layer_opacity_changed(change):
-                        if change["new"]:
-                            layer.style = {
-                                "opacity": change["new"],
-                                "fillOpacity": change["new"],
-                            }
 
                     def layer_vis_on_click(change):
                         if change["new"]:
@@ -1188,13 +1092,8 @@ class Map(ipyleaflet.Map):
 
                     layer_chk.observe(layer_chk_changed, "value")
 
-                    if hasattr(layer, "visible"):
-                        widgets.jslink((layer_chk, "value"), (layer, "visible"))
-
-                    if layer in self.geojson_layers:
-                        layer_opacity.observe(layer_opacity_changed, "value")
-                    else:
-                        widgets.jsdlink((layer_opacity, "value"), (layer, "opacity"))
+                    widgets.jslink((layer_chk, "value"), (layer, "visible"))
+                    widgets.jsdlink((layer_opacity, "value"), (layer, "opacity"))
                     hbox = widgets.HBox(
                         [layer_chk, layer_settings, layer_opacity],
                         layout=widgets.Layout(padding="0px 8px 0px 8px"),
@@ -1219,54 +1118,6 @@ class Map(ipyleaflet.Map):
         )
         # self.add_control(tool_output_control)
 
-        expand_label = widgets.Label(
-            "Expand   ",
-            layout=widgets.Layout(padding="0px 0px 0px 4px"),
-        )
-
-        expand_point = widgets.Checkbox(
-            description="Point",
-            indent=False,
-            value=self._expand_point,
-            layout=widgets.Layout(width="65px"),
-        )
-
-        expand_pixels = widgets.Checkbox(
-            description="Pixels",
-            indent=False,
-            value=self._expand_pixels,
-            layout=widgets.Layout(width="65px"),
-        )
-
-        expand_objects = widgets.Checkbox(
-            description="Objects",
-            indent=False,
-            value=self._expand_objects,
-            layout=widgets.Layout(width="70px"),
-        )
-
-        def expand_point_changed(change):
-            self._expand_point = change["new"]
-
-        def expand_pixels_changed(change):
-            self._expand_pixels = change["new"]
-
-        def expand_objects_changed(change):
-            self._expand_objects = change["new"]
-
-        expand_point.observe(expand_point_changed, "value")
-        expand_pixels.observe(expand_pixels_changed, "value")
-        expand_objects.observe(expand_objects_changed, "value")
-
-        inspector_checks = widgets.HBox()
-        inspector_checks.children = [
-            expand_label,
-            widgets.Label(""),
-            expand_point,
-            expand_pixels,
-            expand_objects,
-        ]
-
         def handle_interaction(**kwargs):
             latlon = kwargs.get("coordinates")
             if kwargs.get("type") == "click" and self.inspector_checked:
@@ -1278,8 +1129,86 @@ class Map(ipyleaflet.Map):
 
                 with inspector_output:
                     inspector_output.clear_output(wait=True)
-                    display(inspector_checks)
-                    display(self.inspector(latlon))
+                    print(
+                        f"Point ({latlon[1]:.4f}, {latlon[0]:.4f}) at {int(self.get_scale())}m/px"
+                    )
+                    xy = ee.Geometry.Point(latlon[::-1])
+                    for index, ee_object in enumerate(layers):
+                        layer_names = self.ee_layer_names
+                        layer_name = layer_names[index]
+                        object_type = ee_object.__class__.__name__
+
+                        if not self.ee_layer_dict[layer_name]["ee_layer"].visible:
+                            continue
+
+                        try:
+                            if isinstance(ee_object, ee.ImageCollection):
+                                ee_object = ee_object.mosaic()
+                            elif (
+                                isinstance(ee_object, ee.geometry.Geometry)
+                                or isinstance(ee_object, ee.feature.Feature)
+                                or isinstance(
+                                    ee_object,
+                                    ee.featurecollection.FeatureCollection,
+                                )
+                            ):
+                                ee_object = ee.FeatureCollection(ee_object)
+
+                            if isinstance(ee_object, ee.Image):
+                                item = ee_object.reduceRegion(
+                                    ee.Reducer.first(), xy, sample_scale
+                                ).getInfo()
+                                b_name = "band"
+                                if len(item) > 1:
+                                    b_name = "bands"
+                                print(
+                                    "{}: {} ({} {})".format(
+                                        layer_name,
+                                        object_type,
+                                        len(item),
+                                        b_name,
+                                    )
+                                )
+                                keys = item.keys()
+                                for key in keys:
+                                    print(f"  {key}: {item[key]}")
+                            elif isinstance(ee_object, ee.FeatureCollection):
+
+                                # Check geometry type
+                                geom_type = (
+                                    ee.Feature(ee_object.first()).geometry().type()
+                                )
+                                lat, lon = latlon
+                                delta = 0.005
+                                bbox = ee.Geometry.BBox(
+                                    lon - delta,
+                                    lat - delta,
+                                    lon + delta,
+                                    lat + delta,
+                                )
+                                # Create a bounding box to filter points
+                                xy = ee.Algorithms.If(
+                                    geom_type.compareTo(ee.String("Point")),
+                                    xy,
+                                    bbox,
+                                )
+
+                                filtered = ee_object.filterBounds(xy)
+                                size = filtered.size().getInfo()
+                                if size > 0:
+                                    first = filtered.first()
+                                    props = first.toDictionary().getInfo()
+                                    b_name = "property"
+                                    if len(props) > 1:
+                                        b_name = "properties"
+                                    print(
+                                        f"{layer_name}: Feature ({len(props)} {b_name})"
+                                    )
+                                    keys = props.keys()
+                                    for key in keys:
+                                        print(f"  {key}: {props[key]}")
+                        except Exception as e:
+                            print(e)
 
                 self.default_style = {"cursor": "crosshair"}
             if (
@@ -1400,7 +1329,7 @@ class Map(ipyleaflet.Map):
         self.add_control(measure)
 
         try:
-            self.add_layer(basemaps[mapTypeId])
+            self.add_layer(basemap_tiles[mapTypeId])
         except Exception:
             raise ValueError(
                 'Google basemaps can only be one of "ROADMAP", "SATELLITE", "HYBRID" or "TERRAIN".'
@@ -1422,10 +1351,6 @@ class Map(ipyleaflet.Map):
         """
 
         image = None
-
-        if vis_params is None:
-            vis_params = {}
-
         if name is None:
             layer_count = len(self.layers)
             name = "Layer " + str(layer_count + 1)
@@ -1470,21 +1395,12 @@ class Map(ipyleaflet.Map):
         elif isinstance(ee_object, ee.imagecollection.ImageCollection):
             image = ee_object.mosaic()
 
-        if "palette" in vis_params:
-            if isinstance(vis_params["palette"], tuple):
-                vis_params["palette"] = list(vis_params["palette"])
-            if isinstance(vis_params["palette"], Box):
-                try:
-                    vis_params["palette"] = vis_params["palette"]["default"]
-                except Exception as e:
-                    print("The provided palette is invalid.")
-                    raise Exception(e)
-            elif isinstance(vis_params["palette"], str):
-                vis_params["palette"] = check_cmap(vis_params["palette"])
-            elif not isinstance(vis_params["palette"], list):
-                raise ValueError(
-                    "The palette must be a list of colors or a string or a Box object."
-                )
+        if "palette" in vis_params and isinstance(vis_params["palette"], Box):
+            try:
+                vis_params["palette"] = vis_params["palette"]["default"]
+            except Exception as e:
+                print("The provided palette is invalid.")
+                raise Exception(e)
 
         map_id_dict = ee.Image(image).getMapId(vis_params)
         tile_layer = ipyleaflet.TileLayer(
@@ -1575,7 +1491,7 @@ class Map(ipyleaflet.Map):
             layers = list(self.layers)
             layers = (
                 layers[0:draw_layer_index]
-                + layers[(draw_layer_index + 1) :]
+                + layers[(draw_layer_index + 1):]
                 + [layers[draw_layer_index]]
             )
             self.layers = layers
@@ -1684,27 +1600,6 @@ class Map(ipyleaflet.Map):
 
     getScale = get_scale
 
-    def get_bounds(self, asGeoJSON=False):
-        """Returns the bounds of the current map view, as a list in the format [west, south, east, north] in degrees.
-
-        Args:
-            asGeoJSON (bool, optional): If true, returns map bounds as GeoJSON. Defaults to False.
-
-        Returns:
-            list | dict: A list in the format [west, south, east, north] in degrees.
-        """
-        bounds = self.bounds
-        coords = [bounds[0][1], bounds[0][0], bounds[1][1], bounds[1][0]]
-
-        if asGeoJSON:
-            return ee.Geometry.BBox(
-                bounds[0][1], bounds[0][0], bounds[1][1], bounds[1][0]
-            ).getInfo()
-        else:
-            return coords
-
-    getBounds = get_bounds
-
     def add_basemap(self, basemap="HYBRID"):
         """Adds a basemap to the map.
 
@@ -1712,13 +1607,16 @@ class Map(ipyleaflet.Map):
             basemap (str, optional): Can be one of string from basemaps. Defaults to 'HYBRID'.
         """
         try:
-            if basemap in basemaps.keys() and basemaps[basemap] not in self.layers:
-                self.add_layer(basemaps[basemap])
+            if (
+                basemap in basemap_tiles.keys()
+                and basemap_tiles[basemap] not in self.layers
+            ):
+                self.add_layer(basemap_tiles[basemap])
 
         except Exception:
             raise ValueError(
                 "Basemap can only be one of the following:\n  {}".format(
-                    "\n  ".join(basemaps.keys())
+                    "\n  ".join(basemap_tiles.keys())
                 )
             )
 
@@ -1755,18 +1653,6 @@ class Map(ipyleaflet.Map):
 
         return None
 
-    def show_layer(self, name, show=True):
-        """Shows or hides a layer on the map.
-
-        Args:
-            name (str): Name of the layer to show/hide.
-            show (bool, optional): Whether to show or hide the layer. Defaults to True.
-        """
-        layer = self.find_layer(name)
-
-        if layer is not None:
-            layer.visible = show
-
     def find_layer_index(self, name):
         """Finds layer index by name
 
@@ -1784,16 +1670,16 @@ class Map(ipyleaflet.Map):
 
         return -1
 
-    def layer_opacity(self, name, opacity=1.0):
+    def layer_opacity(self, name, value=1.0):
         """Changes layer opacity.
 
         Args:
             name (str): The name of the layer to change opacity.
-            opacity (float, optional): The opacity value to set. Defaults to 1.0.
+            value (float, optional): The opacity value to set. Defaults to 1.0.
         """
         layer = self.find_layer(name)
         try:
-            layer.opacity = opacity
+            layer.opacity = value
         except Exception as e:
             raise Exception(e)
 
@@ -1803,8 +1689,8 @@ class Map(ipyleaflet.Map):
         layers,
         name=None,
         attribution="",
-        format="image/png",
-        transparent=True,
+        format="image/jpeg",
+        transparent=False,
         opacity=1.0,
         shown=True,
         **kwargs,
@@ -1816,8 +1702,8 @@ class Map(ipyleaflet.Map):
             layers (str): Comma-separated list of WMS layers to show.
             name (str, optional): The layer name to use on the layer control. Defaults to None.
             attribution (str, optional): The attribution of the data layer. Defaults to ''.
-            format (str, optional): WMS image format (use ‘image/png’ for layers with transparency). Defaults to 'image/png'.
-            transparent (bool, optional): If True, the WMS service will return images with transparency. Defaults to True.
+            format (str, optional): WMS image format (use ‘image/png’ for layers with transparency). Defaults to 'image/jpeg'.
+            transparent (bool, optional): If True, the WMS service will return images with transparency. Defaults to False.
             opacity (float, optional): The opacity of the layer. Defaults to 1.0.
             shown (bool, optional): A flag indicating whether the layer should be on by default. Defaults to True.
         """
@@ -1861,12 +1747,6 @@ class Map(ipyleaflet.Map):
             opacity (float, optional): The opacity of the layer. Defaults to 1.
             shown (bool, optional): A flag indicating whether the layer should be on by default. Defaults to True.
         """
-
-        if "max_zoom" not in kwargs:
-            kwargs["max_zoom"] = 100
-        if "max_native_zoom" not in kwargs:
-            kwargs["max_native_zoom"] = 100
-
         try:
             tile_layer = ipyleaflet.TileLayer(
                 url=url,
@@ -1930,7 +1810,7 @@ class Map(ipyleaflet.Map):
         self,
         url=None,
         collection=None,
-        item=None,
+        items=None,
         assets=None,
         bands=None,
         titiler_endpoint=None,
@@ -1945,7 +1825,7 @@ class Map(ipyleaflet.Map):
         Args:
             url (str): HTTP URL to a STAC item, e.g., https://canada-spot-ortho.s3.amazonaws.com/canada_spot_orthoimages/canada_spot5_orthoimages/S5_2007/S5_11055_6057_20070622/S5_11055_6057_20070622.json
             collection (str): The Microsoft Planetary Computer STAC collection ID, e.g., landsat-8-c2-l2.
-            item (str): The Microsoft Planetary Computer STAC item ID, e.g., LC08_L2SP_047027_20201204_02_T1.
+            items (str): The Microsoft Planetary Computer STAC item ID, e.g., LC08_L2SP_047027_20201204_02_T1.
             assets (str | list): The Microsoft Planetary Computer STAC asset ID, e.g., ["SR_B7", "SR_B5", "SR_B4"].
             bands (list): A list of band names, e.g., ["SR_B7", "SR_B5", "SR_B4"]
             titiler_endpoint (str, optional): Titiler endpoint, e.g., "https://titiler.xyz", "https://planetarycomputer.microsoft.com/api/data/v1", "planetary-computer", "pc". Defaults to None.
@@ -1955,9 +1835,9 @@ class Map(ipyleaflet.Map):
             shown (bool, optional): A flag indicating whether the layer should be on by default. Defaults to True.
         """
         tile_url = stac_tile(
-            url, collection, item, assets, bands, titiler_endpoint, **kwargs
+            url, collection, items, assets, bands, titiler_endpoint, **kwargs
         )
-        bounds = stac_bounds(url, collection, item, titiler_endpoint)
+        bounds = stac_bounds(url, collection, items, titiler_endpoint)
         self.add_tile_layer(tile_url, name, attribution, opacity, shown)
         self.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
@@ -1970,7 +1850,7 @@ class Map(ipyleaflet.Map):
         params = {
             "url": url,
             "collection": collection,
-            "item": item,
+            "items": items,
             "assets": assets,
             "bounds": bounds,
             "titiler_endpoint": titiler_endpoint,
@@ -1991,7 +1871,7 @@ class Map(ipyleaflet.Map):
             attribution_control=False,
             zoom=zoom,
             center=self.center,
-            layers=[basemaps["ROADMAP"]],
+            layers=[basemap_tiles["ROADMAP"]],
         )
         minimap.layout.width = "150px"
         minimap.layout.height = "150px"
@@ -2186,11 +2066,11 @@ class Map(ipyleaflet.Map):
         if self.random_marker is not None:
             self.remove_layer(self.random_marker)
 
-        image = ee.Image("LANDSAT/LE7_TOA_5YEAR/1999_2003").select([0, 1, 2, 3, 4, 6])
+        image = ee.Image("LE7_TOA_5YEAR/1999_2003").select([0, 1, 2, 3, 4, 6])
         self.addLayer(
             image,
             {"bands": ["B4", "B3", "B2"], "gamma": 1.4},
-            "LANDSAT/LE7_TOA_5YEAR/1999_2003",
+            "LE7_TOA_5YEAR/1999_2003",
         )
         self.setCenter(-50.078877, 25.190030, 3)
         band_names = image.bandNames().getInfo()
@@ -2399,31 +2279,17 @@ class Map(ipyleaflet.Map):
 
     def add_layer_control(self):
         """Adds the layer control to the map."""
-        if self.layer_control is None:
-            layer_control = ipyleaflet.LayersControl(position="topright")
-            self.layer_control = layer_control
-            self.add_control(layer_control)
+        pass
 
     addLayerControl = add_layer_control
 
-    def split_map(
-        self,
-        left_layer="HYBRID",
-        right_layer="ROADMAP",
-        add_close_button=False,
-        **kwargs,
-    ):
+    def split_map(self, left_layer="HYBRID", right_layer="ROADMAP"):
         """Adds split map.
 
         Args:
             left_layer (str, optional): The layer tile layer. Defaults to 'HYBRID'.
             right_layer (str, optional): The right tile layer. Defaults to 'ROADMAP'.
-            add_close_button (bool, optional): Whether to add a close button. Defaults to False.
         """
-        if "max_zoom" not in kwargs:
-            kwargs["max_zoom"] = 100
-        if "max_native_zoom" not in kwargs:
-            kwargs["max_native_zoom"] = 100
         try:
             controls = self.controls
             layers = self.layers
@@ -2431,55 +2297,11 @@ class Map(ipyleaflet.Map):
 
             self.add_control(ipyleaflet.ZoomControl())
             self.add_control(ipyleaflet.FullScreenControl())
-            if left_layer in basemaps.keys():
-                left_layer = basemaps[left_layer]
-            elif isinstance(left_layer, str):
-                if left_layer.startswith("http") and left_layer.endswith(".tif"):
-                    url = cog_tile(left_layer)
-                    left_layer = ipyleaflet.TileLayer(
-                        url=url,
-                        name="Left Layer",
-                        attribution=" ",
-                        **kwargs,
-                    )
-                else:
-                    left_layer = ipyleaflet.TileLayer(
-                        url=left_layer,
-                        name="Left Layer",
-                        attribution=" ",
-                        **kwargs,
-                    )
-            elif isinstance(left_layer, ipyleaflet.TileLayer):
-                pass
-            else:
-                raise ValueError(
-                    f"left_layer must be one of the following: {', '.join(basemaps.keys())} or a string url to a tif file."
-                )
+            if left_layer in basemap_tiles.keys():
+                left_layer = basemap_tiles[left_layer]
 
-            if right_layer in basemaps.keys():
-                right_layer = basemaps[right_layer]
-            elif isinstance(right_layer, str):
-                if right_layer.startswith("http") and right_layer.endswith(".tif"):
-                    url = cog_tile(right_layer)
-                    right_layer = ipyleaflet.TileLayer(
-                        url=url,
-                        name="Right Layer",
-                        attribution=" ",
-                        **kwargs,
-                    )
-                else:
-                    right_layer = ipyleaflet.TileLayer(
-                        url=right_layer,
-                        name="Right Layer",
-                        attribution=" ",
-                        **kwargs,
-                    )
-            elif isinstance(right_layer, ipyleaflet.TileLayer):
-                pass
-            else:
-                raise ValueError(
-                    f"right_layer must be one of the following: {', '.join(basemaps.keys())} or a string url to a tif file."
-                )
+            if right_layer in basemap_tiles.keys():
+                right_layer = basemap_tiles[right_layer]
 
             control = ipyleaflet.SplitMapControl(
                 left_layer=left_layer, right_layer=right_layer
@@ -2506,8 +2328,7 @@ class Map(ipyleaflet.Map):
             )
 
             self.add_control(control)
-            if add_close_button:
-                self.add_control(close_control)
+            self.add_control(close_control)
 
         except Exception as e:
             print("The provided layers are invalid!")
@@ -2516,47 +2337,27 @@ class Map(ipyleaflet.Map):
     def ts_inspector(
         self,
         left_ts,
-        left_names=None,
+        right_ts,
+        left_names,
+        right_names,
         left_vis={},
-        left_index=0,
-        right_ts=None,
-        right_names=None,
-        right_vis=None,
-        right_index=-1,
+        right_vis={},
         width="130px",
-        date_format="YYYY-MM-dd",
-        add_close_button=False,
         **kwargs,
     ):
         """Creates a split-panel map for inspecting timeseries images.
 
         Args:
             left_ts (object): An ee.ImageCollection to show on the left panel.
-            left_names (list): A list of names to show under the left dropdown.
-            left_vis (dict, optional): Visualization parameters for the left layer. Defaults to {}.
-            left_index (int, optional): The index of the left layer to show. Defaults to 0.
             right_ts (object): An ee.ImageCollection to show on the right panel.
+            left_names (list): A list of names to show under the left dropdown.
             right_names (list): A list of names to show under the right dropdown.
+            left_vis (dict, optional): Visualization parameters for the left layer. Defaults to {}.
             right_vis (dict, optional): Visualization parameters for the right layer. Defaults to {}.
-            right_index (int, optional): The index of the right layer to show. Defaults to -1.
             width (str, optional): The width of the dropdown list. Defaults to '130px'.
-            date_format (str, optional): The date format to show in the dropdown. Defaults to 'YYYY-MM-dd'.
-            add_close_button (bool, optional): Whether to show the close button. Defaults to False.
         """
         controls = self.controls
         layers = self.layers
-
-        if left_names is None:
-            left_names = image_dates(left_ts, date_format=date_format).getInfo()
-
-        if right_ts is None:
-            right_ts = left_ts
-
-        if right_names is None:
-            right_names = left_names
-
-        if right_vis is None:
-            right_vis = left_vis
 
         left_count = int(left_ts.size().getInfo())
         right_count = int(right_ts.size().getInfo())
@@ -2667,11 +2468,6 @@ class Map(ipyleaflet.Map):
 
         right_dropdown.observe(right_dropdown_change, names="value")
 
-        if left_index is not None:
-            left_dropdown.value = left_names[left_index]
-        if right_index is not None:
-            right_dropdown.value = right_names[right_index]
-
         close_button = widgets.ToggleButton(
             value=False,
             tooltip="Close the tool",
@@ -2700,8 +2496,7 @@ class Map(ipyleaflet.Map):
             )
             self.add_control(split_control)
 
-            if add_close_button:
-                self.add_control(close_control)
+            self.add_control(close_control)
 
         except Exception as e:
             raise Exception(e)
@@ -2709,7 +2504,7 @@ class Map(ipyleaflet.Map):
     def basemap_demo(self):
         """A demo for using geemap basemaps."""
         dropdown = widgets.Dropdown(
-            options=list(basemaps.keys()),
+            options=list(basemap_tiles.keys()),
             value="HYBRID",
             description="Basemaps",
         )
@@ -2717,7 +2512,7 @@ class Map(ipyleaflet.Map):
         def on_click(change):
             basemap_name = change["new"]
             old_basemap = self.layers[-1]
-            self.substitute_layer(old_basemap, basemaps[basemap_name])
+            self.substitute_layer(old_basemap, basemap_tiles[basemap_name])
 
         dropdown.observe(on_click, "value")
         basemap_control = ipyleaflet.WidgetControl(widget=dropdown, position="topright")
@@ -2725,10 +2520,10 @@ class Map(ipyleaflet.Map):
 
     def add_legend(
         self,
-        title="Legend",
+        legend_title="Legend",
         legend_dict=None,
-        labels=None,
-        colors=None,
+        legend_keys=None,
+        legend_colors=None,
         position="bottomright",
         builtin_legend=None,
         layer_name=None,
@@ -2737,15 +2532,16 @@ class Map(ipyleaflet.Map):
         """Adds a customized basemap to the map.
 
         Args:
-            title (str, optional): Title of the legend. Defaults to 'Legend'.
+            legend_title (str, optional): Title of the legend. Defaults to 'Legend'.
             legend_dict (dict, optional): A dictionary containing legend items as keys and color as values. If provided, legend_keys and legend_colors will be ignored. Defaults to None.
-            labels (list, optional): A list of legend keys. Defaults to None.
-            colors (list, optional): A list of legend colors. Defaults to None.
+            legend_keys (list, optional): A list of legend keys. Defaults to None.
+            legend_colors (list, optional): A list of legend colors. Defaults to None.
             position (str, optional): Position of the legend. Defaults to 'bottomright'.
             builtin_legend (str, optional): Name of the builtin legend to add to the map. Defaults to None.
             layer_name (str, optional): Layer name of the legend to be associated with. Defaults to None.
 
         """
+        import pkg_resources
         from IPython.display import display
 
         pkg_dir = os.path.dirname(
@@ -2785,31 +2581,33 @@ class Map(ipyleaflet.Map):
             print("The legend template does not exist.")
             return
 
-        if labels is not None:
-            if not isinstance(labels, list):
+        if legend_keys is not None:
+            if not isinstance(legend_keys, list):
                 print("The legend keys must be a list.")
                 return
         else:
-            labels = ["One", "Two", "Three", "Four", "etc"]
+            legend_keys = ["One", "Two", "Three", "Four", "etc"]
 
-        if colors is not None:
-            if not isinstance(colors, list):
+        if legend_colors is not None:
+            if not isinstance(legend_colors, list):
                 print("The legend colors must be a list.")
                 return
-            elif all(isinstance(item, tuple) for item in colors):
+            elif all(isinstance(item, tuple) for item in legend_colors):
                 try:
-                    colors = [rgb_to_hex(x) for x in colors]
+                    legend_colors = [rgb_to_hex(x) for x in legend_colors]
                 except Exception as e:
                     print(e)
-            elif all((item.startswith("#") and len(item) == 7) for item in colors):
+            elif all(
+                (item.startswith("#") and len(item) == 7) for item in legend_colors
+            ):
                 pass
-            elif all((len(item) == 6) for item in colors):
+            elif all((len(item) == 6) for item in legend_colors):
                 pass
             else:
                 print("The legend colors must be a list of tuples.")
                 return
         else:
-            colors = [
+            legend_colors = [
                 "#8DD3C7",
                 "#FFFFB3",
                 "#BEBADA",
@@ -2817,7 +2615,7 @@ class Map(ipyleaflet.Map):
                 "#80B1D3",
             ]
 
-        if len(labels) != len(colors):
+        if len(legend_keys) != len(legend_colors):
             print("The legend keys and values must be the same length.")
             return
 
@@ -2832,19 +2630,19 @@ class Map(ipyleaflet.Map):
                 return
             else:
                 legend_dict = builtin_legends[builtin_legend]
-                labels = list(legend_dict.keys())
-                colors = list(legend_dict.values())
+                legend_keys = list(legend_dict.keys())
+                legend_colors = list(legend_dict.values())
 
         if legend_dict is not None:
             if not isinstance(legend_dict, dict):
                 print("The legend dict must be a dictionary.")
                 return
             else:
-                labels = list(legend_dict.keys())
-                colors = list(legend_dict.values())
-                if all(isinstance(item, tuple) for item in colors):
+                legend_keys = list(legend_dict.keys())
+                legend_colors = list(legend_dict.values())
+                if all(isinstance(item, tuple) for item in legend_colors):
                     try:
-                        colors = [rgb_to_hex(x) for x in colors]
+                        legend_colors = [rgb_to_hex(x) for x in legend_colors]
                     except Exception as e:
                         print(e)
 
@@ -2868,12 +2666,12 @@ class Map(ipyleaflet.Map):
 
         with open(legend_template) as f:
             lines = f.readlines()
-            lines[3] = lines[3].replace("Legend", title)
+            lines[3] = lines[3].replace("Legend", legend_title)
             header = lines[:6]
             footer = lines[11:]
 
-        for index, key in enumerate(labels):
-            color = colors[index]
+        for index, key in enumerate(legend_keys):
+            color = legend_colors[index]
             if not color.startswith("#"):
                 color = "#" + color
             item = "      <li><span style='background:{};'></span>{}</li>\n".format(
@@ -2906,7 +2704,7 @@ class Map(ipyleaflet.Map):
                 display(legend_widget)
 
             self.legend_widget = legend_output_widget
-            self.legend_control = legend_control
+            self.legend = legend_control
             self.add_control(legend_control)
 
             if not hasattr(self, "legends"):
@@ -3031,7 +2829,7 @@ class Map(ipyleaflet.Map):
             norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
         if "palette" in vis_keys:
-            hexcodes = to_hex_colors(check_cmap(vis_params["palette"]))
+            hexcodes = to_hex_colors(vis_params["palette"])
             if discrete:
                 cmap = mpl.colors.ListedColormap(hexcodes)
                 vals = np.linspace(vmin, vmax, cmap.N + 1)
@@ -3058,10 +2856,10 @@ class Map(ipyleaflet.Map):
             ax, norm=norm, alpha=alpha, cmap=cmap, orientation=orientation, **kwargs
         )
 
-        if label is not None:
-            cb.set_label(label)
-        elif "bands" in vis_keys:
+        if "bands" in vis_keys:
             cb.set_label(vis_params["bands"])
+        elif label is not None:
+            cb.set_label(label)
 
         output = widgets.Output()
         colormap_ctrl = ipyleaflet.WidgetControl(
@@ -3243,7 +3041,7 @@ class Map(ipyleaflet.Map):
         except Exception as e:
             print(e)
 
-    def video_overlay(self, url, bounds, name="Video"):
+    def video_overlay(self, url, bounds, name):
         """Overlays a video from the Internet on the map.
 
         Args:
@@ -3426,7 +3224,7 @@ class Map(ipyleaflet.Map):
 
     def to_html(
         self,
-        filename=None,
+        outfile=None,
         title="My Map",
         width="100%",
         height="880px",
@@ -3436,7 +3234,7 @@ class Map(ipyleaflet.Map):
         """Saves the map as an HTML file.
 
         Args:
-            filename (str, optional): The output file path to the HTML file.
+            outfile (str, optional): The output file path to the HTML file.
             title (str, optional): The title of the HTML file. Defaults to 'My Map'.
             width (str, optional): The width of the map in pixels or percentage. Defaults to '100%'.
             height (str, optional): The height of the map in pixels. Defaults to '880px'.
@@ -3446,15 +3244,15 @@ class Map(ipyleaflet.Map):
         try:
 
             save = True
-            if filename is not None:
-                if not filename.endswith(".html"):
+            if outfile is not None:
+                if not outfile.endswith(".html"):
                     raise ValueError("The output file extension must be html.")
-                filename = os.path.abspath(filename)
-                out_dir = os.path.dirname(filename)
+                outfile = os.path.abspath(outfile)
+                out_dir = os.path.dirname(outfile)
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
             else:
-                filename = os.path.abspath(random_string() + ".html")
+                outfile = os.path.abspath(random_string() + ".html")
                 save = False
 
             if add_layer_control and self.layer_control is None:
@@ -3484,43 +3282,43 @@ class Map(ipyleaflet.Map):
             self.layout.width = width
             self.layout.height = height
 
-            self.save(filename, title=title, **kwargs)
+            self.save(outfile, title=title, **kwargs)
 
             self.layout.width = before_width
             self.layout.height = before_height
 
             if not save:
                 out_html = ""
-                with open(filename) as f:
+                with open(outfile) as f:
                     lines = f.readlines()
                     out_html = "".join(lines)
-                os.remove(filename)
+                os.remove(outfile)
                 return out_html
 
         except Exception as e:
             raise Exception(e)
 
-    def to_image(self, filename=None, monitor=1):
+    def to_image(self, outfile=None, monitor=1):
         """Saves the map as a PNG or JPG image.
 
         Args:
-            filename (str, optional): The output file path to the image. Defaults to None.
+            outfile (str, optional): The output file path to the image. Defaults to None.
             monitor (int, optional): The monitor to take the screenshot. Defaults to 1.
         """
-        if filename is None:
-            filename = os.path.join(os.getcwd(), "my_map.png")
+        if outfile is None:
+            outfile = os.path.join(os.getcwd(), "my_map.png")
 
-        if filename.endswith(".png") or filename.endswith(".jpg"):
+        if outfile.endswith(".png") or outfile.endswith(".jpg"):
             pass
         else:
             print("The output file must be a PNG or JPG image.")
             return
 
-        work_dir = os.path.dirname(filename)
+        work_dir = os.path.dirname(outfile)
         if not os.path.exists(work_dir):
             os.makedirs(work_dir)
 
-        screenshot = screen_capture(filename, monitor)
+        screenshot = screen_capture(outfile, monitor)
         self.screenshot = screenshot
 
     def toolbar_reset(self):
@@ -3529,7 +3327,7 @@ class Map(ipyleaflet.Map):
         for tool in toolbar_grid.children:
             tool.value = False
 
-    def add_raster(
+    def add_local_tile(
         self,
         source,
         band=None,
@@ -3543,12 +3341,6 @@ class Map(ipyleaflet.Map):
     ):
         """Add a local raster dataset to the map.
 
-            If you are using this function in JupyterHub on a remote server and the raster does not render properly, try
-            running the following two lines before calling this function:
-
-            import os
-            os.environ['LOCALTILESERVER_CLIENT_PREFIX'] = 'proxy/{port}'
-
         Args:
             source (str): The path to the GeoTIFF file or the URL of the Cloud Optimized GeoTIFF.
             band (int, optional): The band to use. Band indexing starts at 1. Defaults to None.
@@ -3560,11 +3352,7 @@ class Map(ipyleaflet.Map):
             layer_name (str, optional): The layer name to use. Defaults to None.
         """
 
-        if in_colab_shell():
-            print("This add_raster() function is not supported in Colab.")
-            return
-
-        tile_layer, tile_client = get_local_tile_layer(
+        tile, bounds = get_local_tile_layer(
             source,
             band=band,
             palette=palette,
@@ -3573,38 +3361,11 @@ class Map(ipyleaflet.Map):
             nodata=nodata,
             attribution=attribution,
             layer_name=layer_name,
-            return_client=True,
+            get_bounds=True,
             **kwargs,
         )
-
-        self.add_layer(tile_layer)
-
-        output = widgets.Output()
-
-        with output:
-            bounds = tile_client.bounds()  # [ymin, ymax, xmin, xmax]
-            bounds = (
-                bounds[2],
-                bounds[0],
-                bounds[3],
-                bounds[1],
-            )  # [minx, miny, maxx, maxy]
-            self.zoom_to_bounds(bounds)
-
-        if not hasattr(self, "cog_layer_dict"):
-            self.cog_layer_dict = {}
-        band_names = list(tile_client.metadata()["bands"].keys())
-        params = {
-            "tile_layer": tile_layer,
-            "tile_client": tile_client,
-            "band": band,
-            "band_names": band_names,
-            "bounds": bounds,
-            "type": "LOCAL",
-        }
-        self.cog_layer_dict[layer_name] = params
-
-    add_local_tile = add_raster
+        self.add_layer(tile)
+        self.zoom_to_bounds(bounds)
 
     def add_remote_tile(
         self,
@@ -3631,7 +3392,7 @@ class Map(ipyleaflet.Map):
             layer_name (str, optional): The layer name to use. Defaults to None.
         """
         if isinstance(source, str) and source.startswith("http"):
-            self.add_raster(
+            self.add_local_tile(
                 source,
                 band=band,
                 palette=palette,
@@ -3645,7 +3406,7 @@ class Map(ipyleaflet.Map):
         else:
             raise Exception("The source must be a URL.")
 
-    def add_raster_legacy(
+    def add_raster(
         self,
         image,
         bands=None,
@@ -3957,10 +3718,8 @@ class Map(ipyleaflet.Map):
                 style={"description_width": "initial"},
             )
 
-            colormap_options = plt.colormaps()
-            colormap_options.sort()
             colormap = widgets.Dropdown(
-                options=colormap_options,
+                options=plt.colormaps(),
                 value=None,
                 description="Colormap:",
                 layout=widgets.Layout(width="181px"),
@@ -4326,7 +4085,7 @@ class Map(ipyleaflet.Map):
                             ]
 
                             self.add_legend(
-                                title=legend_title.value,
+                                legend_title=legend_title.value,
                                 legend_keys=labels,
                                 legend_colors=colors,
                                 layer_name=layer_name,
@@ -4910,9 +4669,7 @@ class Map(ipyleaflet.Map):
                     )
                     self.add_control(self.colorbar_ctrl)
                     fill_color.disabled = True
-                    colormap_options = plt.colormaps()
-                    colormap_options.sort()
-                    colormap.options = colormap_options
+                    colormap.options = plt.colormaps()
                     colormap.value = "viridis"
                     style_vbox.children = [
                         widgets.HBox([style_chk, compute_label]),
@@ -5098,7 +4855,7 @@ class Map(ipyleaflet.Map):
                             label.strip() for label in legend_labels.value.split(",")
                         ]
                         self.add_legend(
-                            title=legend_title.value,
+                            legend_title=legend_title.value,
                             legend_keys=legend_keys,
                             legend_colors=legend_colors,
                             layer_name=new_layer_name.value,
@@ -5159,7 +4916,7 @@ class Map(ipyleaflet.Map):
         styled_vector = vector_styling(ee_object, column, palette, **kwargs)
         self.addLayer(styled_vector.style(**{"styleProperty": "style"}), {}, layer_name)
 
-    def add_shp(
+    def add_shapefile(
         self,
         in_shp,
         layer_name="Untitled",
@@ -5168,7 +4925,6 @@ class Map(ipyleaflet.Map):
         style_callback=None,
         fill_colors=["black"],
         info_mode="on_hover",
-        encoding="utf-8",
     ):
         """Adds a shapefile to the map.
 
@@ -5180,7 +4936,6 @@ class Map(ipyleaflet.Map):
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
             fill_colors (list, optional): The random colors to use for filling polygons. Defaults to ["black"].
             info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
-            encoding (str, optional): The encoding of the shapefile. Defaults to "utf-8".
 
         Raises:
             FileNotFoundError: The provided shapefile could not be found.
@@ -5198,10 +4953,7 @@ class Map(ipyleaflet.Map):
             style_callback,
             fill_colors,
             info_mode,
-            encoding,
         )
-
-    add_shapefile = add_shp
 
     def add_geojson(
         self,
@@ -5212,7 +4964,6 @@ class Map(ipyleaflet.Map):
         style_callback=None,
         fill_colors=["black"],
         info_mode="on_hover",
-        encoding="utf-8",
     ):
         """Adds a GeoJSON file to the map.
 
@@ -5224,17 +4975,12 @@ class Map(ipyleaflet.Map):
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
             fill_colors (list, optional): The random colors to use for filling polygons. Defaults to ["black"].
             info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
-            encoding (str, optional): The encoding of the GeoJSON file. Defaults to "utf-8".
-
         Raises:
             FileNotFoundError: The provided GeoJSON file could not be found.
         """
         import json
         import random
         import requests
-        import warnings
-
-        warnings.filterwarnings("ignore")
 
         style_callback_only = False
 
@@ -5246,7 +4992,6 @@ class Map(ipyleaflet.Map):
             if isinstance(in_geojson, str):
 
                 if in_geojson.startswith("http"):
-                    in_geojson = github_raw_url(in_geojson)
                     data = requests.get(in_geojson).json()
                 else:
                     in_geojson = os.path.abspath(in_geojson)
@@ -5255,7 +5000,7 @@ class Map(ipyleaflet.Map):
                             "The provided GeoJSON file could not be found."
                         )
 
-                    with open(in_geojson, encoding=encoding) as f:
+                    with open(in_geojson, encoding="utf-8") as f:
                         data = json.load(f)
             elif isinstance(in_geojson, dict):
                 data = in_geojson
@@ -5345,7 +5090,7 @@ class Map(ipyleaflet.Map):
         def update_html(feature, **kwargs):
 
             value = [
-                "<b>{}: </b>{}<br>".format(prop, feature["properties"][prop])
+                "<h5><b>{}: </b>{}</h5>".format(prop, feature["properties"][prop])
                 for prop in feature["properties"].keys()
             ][:-1]
 
@@ -5377,18 +5122,6 @@ class Map(ipyleaflet.Map):
             geojson.on_click(update_html)
 
         self.add_layer(geojson)
-        self.geojson_layers.append(geojson)
-
-        if not hasattr(self, "json_layer_dict"):
-            self.json_layer_dict = {}
-
-        params = {
-            "data": geojson,
-            "style": style,
-            "hover_style": hover_style,
-            "style_callback": style_callback,
-        }
-        self.json_layer_dict[layer_name] = params
 
     def add_kml(
         self,
@@ -5414,10 +5147,6 @@ class Map(ipyleaflet.Map):
         Raises:
             FileNotFoundError: The provided KML file could not be found.
         """
-
-        if isinstance(in_kml, str) and in_kml.startswith("http"):
-            in_kml = github_raw_url(in_kml)
-            in_kml = download_file(in_kml)
 
         in_kml = os.path.abspath(in_kml)
         if not os.path.exists(in_kml):
@@ -5445,7 +5174,6 @@ class Map(ipyleaflet.Map):
         style_callback=None,
         fill_colors=["black"],
         info_mode="on_hover",
-        encoding="utf-8",
         **kwargs,
     ):
         """Adds any geopandas-supported vector dataset to the map.
@@ -5462,13 +5190,10 @@ class Map(ipyleaflet.Map):
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
             fill_colors (list, optional): The random colors to use for filling polygons. Defaults to ["black"].
             info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
-            encoding (str, optional): The encoding to use to read the file. Defaults to "utf-8".
 
         """
         if not filename.startswith("http"):
             filename = os.path.abspath(filename)
-        else:
-            filename = github_raw_url(filename)
         if to_ee:
 
             fc = vector_to_ee(
@@ -5493,7 +5218,6 @@ class Map(ipyleaflet.Map):
                     style_callback,
                     fill_colors,
                     info_mode,
-                    encoding,
                 )
             elif ext in [".json", ".geojson"]:
                 self.add_geojson(
@@ -5504,7 +5228,6 @@ class Map(ipyleaflet.Map):
                     style_callback,
                     fill_colors,
                     info_mode,
-                    encoding,
                 )
             else:
                 geojson = vector_to_geojson(
@@ -5524,7 +5247,6 @@ class Map(ipyleaflet.Map):
                     style_callback,
                     fill_colors,
                     info_mode,
-                    encoding,
                 )
 
     def add_osm(
@@ -5891,7 +5613,6 @@ class Map(ipyleaflet.Map):
         fill_colors=["black"],
         info_mode="on_hover",
         zoom_to_layer=True,
-        encoding="utf-8",
     ):
         """Adds a GeoDataFrame to the map.
 
@@ -5904,21 +5625,116 @@ class Map(ipyleaflet.Map):
             fill_colors (list, optional): The random colors to use for filling polygons. Defaults to ["black"].
             info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
             zoom_to_layer (bool, optional): Whether to zoom to the layer.
-            encoding (str, optional): The encoding of the GeoDataFrame. Defaults to "utf-8".
         """
+        import random
 
         data = gdf_to_geojson(gdf, epsg="4326")
 
-        self.add_geojson(
-            data,
-            layer_name,
-            style,
-            hover_style,
-            style_callback,
-            fill_colors,
-            info_mode,
-            encoding,
+        if not style:
+            style = {
+                # "stroke": True,
+                "color": "#000000",
+                "weight": 1,
+                "opacity": 1,
+                # "fill": True,
+                # "fillColor": "#ffffff",
+                "fillOpacity": 0.1,
+                # "dashArray": "9"
+                # "clickable": True,
+            }
+        elif "weight" not in style:
+            style["weight"] = 1
+
+        if not hover_style:
+            hover_style = {"weight": style["weight"] + 1, "fillOpacity": 0.5}
+
+        def random_color(feature):
+            return {
+                "color": "black",
+                "fillColor": random.choice(fill_colors),
+            }
+
+        toolbar_button = widgets.ToggleButton(
+            value=True,
+            tooltip="Toolbar",
+            icon="info",
+            layout=widgets.Layout(
+                width="28px", height="28px", padding="0px 0px 0px 4px"
+            ),
         )
+
+        close_button = widgets.ToggleButton(
+            value=False,
+            tooltip="Close the tool",
+            icon="times",
+            # button_style="primary",
+            layout=widgets.Layout(
+                height="28px", width="28px", padding="0px 0px 0px 4px"
+            ),
+        )
+
+        html = widgets.HTML()
+        html.layout.margin = "0px 10px 0px 10px"
+        html.layout.max_height = "250px"
+        html.layout.max_width = "250px"
+
+        output_widget = widgets.VBox(
+            [widgets.HBox([toolbar_button, close_button]), html]
+        )
+        info_control = ipyleaflet.WidgetControl(
+            widget=output_widget, position="bottomright"
+        )
+
+        if info_mode in ["on_hover", "on_click"]:
+            self.add_control(info_control)
+
+        def toolbar_btn_click(change):
+            if change["new"]:
+                close_button.value = False
+                output_widget.children = [
+                    widgets.VBox([widgets.HBox([toolbar_button, close_button]), html])
+                ]
+            else:
+                output_widget.children = [widgets.HBox([toolbar_button, close_button])]
+
+        toolbar_button.observe(toolbar_btn_click, "value")
+
+        def close_btn_click(change):
+            if change["new"]:
+                toolbar_button.value = False
+                if info_control in self.controls:
+                    self.remove_control(info_control)
+                output_widget.close()
+
+        close_button.observe(close_btn_click, "value")
+
+        def update_html(feature, **kwargs):
+
+            value = [
+                "<h5><b>{}: </b>{}</h5>".format(prop, feature["properties"][prop])
+                for prop in feature["properties"].keys()
+            ][:-1]
+
+            value = """{}""".format("".join(value))
+            html.value = value
+
+        if style_callback is None:
+            style_callback = random_color
+
+        geojson = ipyleaflet.GeoJSON(
+            data=data,
+            style=style,
+            hover_style=hover_style,
+            style_callback=style_callback,
+            name=layer_name,
+        )
+
+        if info_mode == "on_hover":
+            geojson.on_hover(update_html)
+        elif info_mode == "on_click":
+            geojson.on_click(update_html)
+
+        self.add_layer(geojson)
 
         if zoom_to_layer:
             import numpy as np
@@ -6222,12 +6038,6 @@ class Map(ipyleaflet.Map):
         y="latitude",
         popup=None,
         layer_name="Marker Cluster",
-        color_column=None,
-        marker_colors=None,
-        icon_colors=["white"],
-        icon_names=["info"],
-        spin=False,
-        add_legend=True,
         **kwargs,
     ):
         """Adds a marker cluster to the map.
@@ -6238,39 +6048,9 @@ class Map(ipyleaflet.Map):
             y (str, optional): The column name for the y values. Defaults to "latitude".
             popup (list, optional): A list of column names to be used as the popup. Defaults to None.
             layer_name (str, optional): The name of the layer. Defaults to "Marker Cluster".
-            color_column (str, optional): The column name for the color values. Defaults to None.
-            marker_colors (list, optional): A list of colors to be used for the markers. Defaults to None.
-            icon_colors (list, optional): A list of colors to be used for the icons. Defaults to ['white'].
-            icon_names (list, optional): A list of names to be used for the icons. More icons can be found at https://fontawesome.com/v4/icons. Defaults to ['info'].
-            spin (bool, optional): If True, the icon will spin. Defaults to False.
-            add_legend (bool, optional): If True, a legend will be added to the map. Defaults to True.
 
         """
         import pandas as pd
-
-        data = github_raw_url(data)
-
-        color_options = [
-            "red",
-            "blue",
-            "green",
-            "purple",
-            "orange",
-            "darkred",
-            "lightred",
-            "beige",
-            "darkblue",
-            "darkgreen",
-            "cadetblue",
-            "darkpurple",
-            "white",
-            "pink",
-            "lightblue",
-            "lightgreen",
-            "gray",
-            "black",
-            "lightgray",
-        ]
 
         if isinstance(data, pd.DataFrame):
             df = data
@@ -6282,47 +6062,6 @@ class Map(ipyleaflet.Map):
         df = points_from_xy(df, x, y)
 
         col_names = df.columns.values.tolist()
-
-        if color_column is not None and color_column not in col_names:
-            raise ValueError(
-                f"The color column {color_column} does not exist in the dataframe."
-            )
-
-        if color_column is not None:
-            items = list(set(df[color_column]))
-
-        else:
-            items = None
-
-        if color_column is not None and marker_colors is None:
-            if len(items) > len(color_options):
-                raise ValueError(
-                    f"The number of unique values in the color column {color_column} is greater than the number of available colors."
-                )
-            else:
-                marker_colors = color_options[: len(items)]
-        elif color_column is not None and marker_colors is not None:
-            if len(items) != len(marker_colors):
-                raise ValueError(
-                    f"The number of unique values in the color column {color_column} is not equal to the number of available colors."
-                )
-
-        if items is not None:
-
-            if len(icon_colors) == 1:
-                icon_colors = icon_colors * len(items)
-            elif len(items) != len(icon_colors):
-                raise ValueError(
-                    f"The number of unique values in the color column {color_column} is not equal to the number of available colors."
-                )
-
-            if len(icon_names) == 1:
-                icon_names = icon_names * len(items)
-            elif len(items) != len(icon_names):
-                raise ValueError(
-                    f"The number of unique values in the color column {color_column} is not equal to the number of available colors."
-                )
-
         if "geometry" in col_names:
             col_names.remove("geometry")
 
@@ -6348,33 +6087,14 @@ class Map(ipyleaflet.Map):
         if popup is not None:
             if isinstance(popup, str):
                 labels = df[popup]
-
-                markers = []
-                for index, point in enumerate(points):
-
-                    if items is not None:
-                        marker_color = marker_colors[
-                            items.index(df[color_column][index])
-                        ]
-                        icon_name = icon_names[items.index(df[color_column][index])]
-                        icon_color = icon_colors[items.index(df[color_column][index])]
-                        marker_icon = ipyleaflet.AwesomeIcon(
-                            name=icon_name,
-                            marker_color=marker_color,
-                            icon_color=icon_color,
-                            spin=spin,
-                        )
-                    else:
-                        marker_icon = None
-
-                    marker = ipyleaflet.Marker(
+                markers = [
+                    ipyleaflet.Marker(
                         location=point,
                         draggable=False,
                         popup=widgets.HTML(str(labels[index])),
-                        icon=marker_icon,
                     )
-                    markers.append(marker)
-
+                    for index, point in enumerate(points)
+                ]
             elif isinstance(popup, list):
                 labels = []
                 for i in range(len(points)):
@@ -6392,60 +6112,22 @@ class Map(ipyleaflet.Map):
                     labels.append(label)
                 df["popup"] = labels
 
-                markers = []
-                for index, point in enumerate(points):
-                    if items is not None:
-                        marker_color = marker_colors[
-                            items.index(df[color_column][index])
-                        ]
-                        icon_name = icon_names[items.index(df[color_column][index])]
-                        icon_color = icon_colors[items.index(df[color_column][index])]
-                        marker_icon = ipyleaflet.AwesomeIcon(
-                            name=icon_name,
-                            marker_color=marker_color,
-                            icon_color=icon_color,
-                            spin=spin,
-                        )
-                    else:
-                        marker_icon = None
-
-                    marker = ipyleaflet.Marker(
+                markers = [
+                    ipyleaflet.Marker(
                         location=point,
                         draggable=False,
                         popup=widgets.HTML(labels[index]),
-                        icon=marker_icon,
                     )
-                    markers.append(marker)
+                    for index, point in enumerate(points)
+                ]
 
         else:
-            markers = []
-            for point in points:
-                if items is not None:
-                    marker_color = marker_colors[items.index(df[color_column][index])]
-                    icon_name = icon_names[items.index(df[color_column][index])]
-                    icon_color = icon_colors[items.index(df[color_column][index])]
-                    marker_icon = ipyleaflet.AwesomeIcon(
-                        name=icon_name,
-                        marker_color=marker_color,
-                        icon_color=icon_color,
-                        spin=spin,
-                    )
-                else:
-                    marker_icon = None
-
-                marker = ipyleaflet.Marker(
-                    location=point, draggable=False, icon=marker_icon
-                )
-                markers.append(marker)
+            markers = [
+                ipyleaflet.Marker(location=point, draggable=False) for point in points
+            ]
 
         marker_cluster = ipyleaflet.MarkerCluster(markers=markers, name=layer_name)
         self.add_layer(marker_cluster)
-
-        if items is not None and add_legend:
-            marker_colors = [check_color(c) for c in marker_colors]
-            self.add_legend(
-                title=color_column.title(), colors=marker_colors, labels=items
-            )
 
         self.default_style = {"cursor": "default"}
 
@@ -6469,8 +6151,6 @@ class Map(ipyleaflet.Map):
 
         """
         import pandas as pd
-
-        data = github_raw_url(data)
 
         if isinstance(data, pd.DataFrame):
             df = data
@@ -6496,16 +6176,25 @@ class Map(ipyleaflet.Map):
         for row in df.itertuples():
             html = ""
             for p in popup:
-                html = html + "<b>" + p + "</b>" + ": " + str(getattr(row, p)) + "<br>"
+                html = (
+                    html
+                    + "<b>"
+                    + p
+                    + "</b>"
+                    + ": "
+                    + str(eval(str("row." + p)))
+                    + "<br>"
+                )
             popup_html = widgets.HTML(html)
 
             marker = ipyleaflet.CircleMarker(
-                location=[getattr(row, y), getattr(row, x)],
+                location=[eval(f"row.{y}"), eval(f"row.{x}")],
                 radius=radius,
                 popup=popup_html,
                 **kwargs,
             )
-            super().add_layer(marker)
+
+            self.add_layer(marker)
 
     def add_planet_by_month(
         self, year=2016, month=1, name=None, api_key=None, token_name="PLANET_API_KEY"
@@ -6537,12 +6226,14 @@ class Map(ipyleaflet.Map):
         layer = planet_tile_by_quarter(year, quarter, name, api_key, token_name)
         self.add_layer(layer)
 
-    def to_streamlit(self, width=None, height=600, scrolling=False, **kwargs):
+    def to_streamlit(
+        self, width=700, height=500, responsive=True, scrolling=False, **kwargs
+    ):
         """Renders map figure in a Streamlit app.
 
         Args:
-            width (int, optional): Width of the map. Defaults to None.
-            height (int, optional): Height of the map. Defaults to 600.
+            width (int, optional): Width of the map. Defaults to 700.
+            height (int, optional): Height of the map. Defaults to 500.
             responsive (bool, optional): Whether to make the map responsive. Defaults to True.
             scrolling (bool, optional): If True, show a scrollbar when the content is larger than the iframe. Otherwise, do not show a scrollbar. Defaults to False.
 
@@ -6551,15 +6242,16 @@ class Map(ipyleaflet.Map):
         """
 
         try:
+            import streamlit as st
             import streamlit.components.v1 as components
 
-            # if responsive:
-            #     make_map_responsive = """
-            #     <style>
-            #     [title~="st.iframe"] { width: 100%}
-            #     </style>
-            #     """
-            #     st.markdown(make_map_responsive, unsafe_allow_html=True)
+            if responsive:
+                make_map_responsive = """
+                <style>
+                [title~="st.iframe"] { width: 100%}
+                </style>
+                """
+                st.markdown(make_map_responsive, unsafe_allow_html=True)
             return components.html(
                 self.to_html(), width=width, height=height, scrolling=scrolling
             )
@@ -6821,7 +6513,7 @@ class Map(ipyleaflet.Map):
                     df = gpd.read_file(data)
                     df[x] = df.centroid.x
                     df[y] = df.centroid.y
-                except Exception as _:
+                except:
                     print("geopandas is required to read geojson.")
                     return
 
@@ -6863,466 +6555,6 @@ class Map(ipyleaflet.Map):
         if hasattr(self, "labels"):
             self.remove_layer(self.labels)
             delattr(self, "labels")
-
-    def add_netcdf(
-        self,
-        filename,
-        variables=None,
-        palette=None,
-        vmin=None,
-        vmax=None,
-        nodata=None,
-        attribution=None,
-        layer_name="NetCDF layer",
-        shift_lon=True,
-        lat="lat",
-        lon="lon",
-        **kwargs,
-    ):
-        """Generate an ipyleaflet/folium TileLayer from a netCDF file.
-            If you are using this function in JupyterHub on a remote server (e.g., Binder, Microsoft Planetary Computer),
-            try adding to following two lines to the beginning of the notebook if the raster does not render properly.
-
-            import os
-            os.environ['LOCALTILESERVER_CLIENT_PREFIX'] = f'{os.environ['JUPYTERHUB_SERVICE_PREFIX'].lstrip('/')}/proxy/{{port}}'
-
-        Args:
-            filename (str): File path or HTTP URL to the netCDF file.
-            variables (int, optional): The variable/band names to extract data from the netCDF file. Defaults to None. If None, all variables will be extracted.
-            port (str, optional): The port to use for the server. Defaults to "default".
-            palette (str, optional): The name of the color palette from `palettable` to use when plotting a single band. See https://jiffyclub.github.io/palettable. Default is greyscale
-            vmin (float, optional): The minimum value to use when colormapping the palette when plotting a single band. Defaults to None.
-            vmax (float, optional): The maximum value to use when colormapping the palette when plotting a single band. Defaults to None.
-            nodata (float, optional): The value from the band to use to interpret as not valid data. Defaults to None.
-            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file.. Defaults to None.
-            layer_name (str, optional): The layer name to use. Defaults to "netCDF layer".
-            shift_lon (bool, optional): Flag to shift longitude values from [0, 360] to the range [-180, 180]. Defaults to True.
-            lat (str, optional): Name of the latitude variable. Defaults to 'lat'.
-            lon (str, optional): Name of the longitude variable. Defaults to 'lon'.
-        """
-
-        if in_colab_shell():
-            print("The add_netcdf() function is not supported in Colab.")
-            return
-
-        tif, vars = netcdf_to_tif(
-            filename, shift_lon=shift_lon, lat=lat, lon=lon, return_vars=True
-        )
-
-        if variables is None:
-            if len(vars) >= 3:
-                band_idx = [1, 2, 3]
-            else:
-                band_idx = [1]
-        else:
-            if not set(variables).issubset(set(vars)):
-                raise ValueError(f"The variables must be a subset of {vars}.")
-            else:
-                band_idx = [vars.index(v) + 1 for v in variables]
-
-        self.add_raster(
-            tif,
-            band=band_idx,
-            palette=palette,
-            vmin=vmin,
-            vmax=vmax,
-            nodata=nodata,
-            attribution=attribution,
-            layer_name=layer_name,
-            **kwargs,
-        )
-
-    def add_velocity(
-        self,
-        data,
-        zonal_speed,
-        meridional_speed,
-        latitude_dimension="lat",
-        longitude_dimension="lon",
-        level_dimension="lev",
-        level_index=0,
-        time_index=0,
-        velocity_scale=0.01,
-        max_velocity=20,
-        display_options={},
-        name="Velocity",
-    ):
-        """Add a velocity layer to the map.
-
-        Args:
-            data (str | xr.Dataset): The data to use for the velocity layer. It can be a file path to a NetCDF file or an xarray Dataset.
-            zonal_speed (str): Name of the zonal speed in the dataset. See https://en.wikipedia.org/wiki/Zonal_and_meridional_flow.
-            meridional_speed (str): Name of the meridional speed in the dataset. See https://en.wikipedia.org/wiki/Zonal_and_meridional_flow.
-            latitude_dimension (str, optional): Name of the latitude dimension in the dataset. Defaults to 'lat'.
-            longitude_dimension (str, optional): Name of the longitude dimension in the dataset. Defaults to 'lon'.
-            level_dimension (str, optional): Name of the level dimension in the dataset. Defaults to 'lev'.
-            level_index (int, optional): The index of the level dimension to display. Defaults to 0.
-            time_index (int, optional): The index of the time dimension to display. Defaults to 0.
-            velocity_scale (float, optional): The scale of the velocity. Defaults to 0.01.
-            max_velocity (int, optional): The maximum velocity to display. Defaults to 20.
-            display_options (dict, optional): The display options for the velocity layer. Defaults to {}. See https://bit.ly/3uf8t6w.
-            name (str, optional): Layer name to use . Defaults to 'Velocity'.
-
-        Raises:
-            ImportError: If the xarray package is not installed.
-            ValueError: If the data is not a NetCDF file or an xarray Dataset.
-        """
-        try:
-            import xarray as xr
-            from ipyleaflet.velocity import Velocity
-        except ImportError:
-            raise ImportError(
-                "The xarray package is required to add a velocity layer. "
-                "Please install it with `pip install xarray`."
-            )
-
-        if isinstance(data, str):
-            if data.startswith("http"):
-                data = download_file(data)
-            ds = xr.open_dataset(data)
-
-        elif isinstance(data, xr.Dataset):
-            ds = data
-        else:
-            raise ValueError("The data must be a file path or xarray dataset.")
-
-        coords = list(ds.coords.keys())
-
-        # Rasterio does not handle time or levels. So we must drop them
-        if "time" in coords:
-            ds = ds.isel(time=time_index, drop=True)
-
-        params = {level_dimension: level_index}
-        if level_dimension in coords:
-            ds = ds.isel(drop=True, **params)
-
-        wind = Velocity(
-            data=ds,
-            zonal_speed=zonal_speed,
-            meridional_speed=meridional_speed,
-            latitude_dimension=latitude_dimension,
-            longitude_dimension=longitude_dimension,
-            velocity_scale=velocity_scale,
-            max_velocity=max_velocity,
-            display_options=display_options,
-            name=name,
-        )
-        self.add_layer(wind)
-
-    def add_data(
-        self,
-        data,
-        column,
-        colors=None,
-        labels=None,
-        cmap=None,
-        scheme="Quantiles",
-        k=5,
-        add_legend=True,
-        legend_title=None,
-        legend_kwds=None,
-        classification_kwds=None,
-        layer_name="Untitled",
-        style=None,
-        hover_style=None,
-        style_callback=None,
-        info_mode="on_hover",
-        encoding="utf-8",
-        **kwargs,
-    ):
-        """Add vector data to the map with a variety of classification schemes.
-
-        Args:
-            data (str | pd.DataFrame | gpd.GeoDataFrame): The data to classify. It can be a filepath to a vector dataset, a pandas dataframe, or a geopandas geodataframe.
-            column (str): The column to classify.
-            cmap (str, optional): The name of a colormap recognized by matplotlib. Defaults to None.
-            colors (list, optional): A list of colors to use for the classification. Defaults to None.
-            labels (list, optional): A list of labels to use for the legend. Defaults to None.
-            scheme (str, optional): Name of a choropleth classification scheme (requires mapclassify).
-                Name of a choropleth classification scheme (requires mapclassify).
-                A mapclassify.MapClassifier object will be used
-                under the hood. Supported are all schemes provided by mapclassify (e.g.
-                'BoxPlot', 'EqualInterval', 'FisherJenks', 'FisherJenksSampled',
-                'HeadTailBreaks', 'JenksCaspall', 'JenksCaspallForced',
-                'JenksCaspallSampled', 'MaxP', 'MaximumBreaks',
-                'NaturalBreaks', 'Quantiles', 'Percentiles', 'StdMean',
-                'UserDefined'). Arguments can be passed in classification_kwds.
-            k (int, optional): Number of classes (ignored if scheme is None or if column is categorical). Default to 5.
-            legend_kwds (dict, optional): Keyword arguments to pass to :func:`matplotlib.pyplot.legend` or `matplotlib.pyplot.colorbar`. Defaults to None.
-                Keyword arguments to pass to :func:`matplotlib.pyplot.legend` or
-                Additional accepted keywords when `scheme` is specified:
-                fmt : string
-                    A formatting specification for the bin edges of the classes in the
-                    legend. For example, to have no decimals: ``{"fmt": "{:.0f}"}``.
-                labels : list-like
-                    A list of legend labels to override the auto-generated labblels.
-                    Needs to have the same number of elements as the number of
-                    classes (`k`).
-                interval : boolean (default False)
-                    An option to control brackets from mapclassify legend.
-                    If True, open/closed interval brackets are shown in the legend.
-            classification_kwds (dict, optional): Keyword arguments to pass to mapclassify. Defaults to None.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
-            style (dict, optional): A dictionary specifying the style to be used. Defaults to None.
-                style is a dictionary of the following form:
-                    style = {
-                    "stroke": False,
-                    "color": "#ff0000",
-                    "weight": 1,
-                    "opacity": 1,
-                    "fill": True,
-                    "fillColor": "#ffffff",
-                    "fillOpacity": 1.0,
-                    "dashArray": "9"
-                    "clickable": True,
-                }
-            hover_style (dict, optional): Hover style dictionary. Defaults to {}.
-                hover_style is a dictionary of the following form:
-                    hover_style = {"weight": style["weight"] + 1, "fillOpacity": 0.5}
-            style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
-                style_callback is a function that takes the feature as argument and should return a dictionary of the following form:
-                style_callback = lambda feat: {"fillColor": feat["properties"]["color"]}
-            info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
-            encoding (str, optional): The encoding of the GeoJSON file. Defaults to "utf-8".
-        """
-
-        gdf, legend_dict = classify(
-            data=data,
-            column=column,
-            cmap=cmap,
-            colors=colors,
-            labels=labels,
-            scheme=scheme,
-            k=k,
-            legend_kwds=legend_kwds,
-            classification_kwds=classification_kwds,
-        )
-
-        if legend_title is None:
-            legend_title = column
-
-        if style is None:
-            style = {
-                # "stroke": False,
-                # "color": "#ff0000",
-                "weight": 1,
-                "opacity": 1,
-                # "fill": True,
-                # "fillColor": "#ffffff",
-                "fillOpacity": 1.0,
-                # "dashArray": "9"
-                # "clickable": True,
-            }
-            if colors is not None:
-                style["color"] = "#000000"
-
-        if hover_style is None:
-            hover_style = {"weight": style["weight"] + 1, "fillOpacity": 0.5}
-
-        if style_callback is None:
-            style_callback = lambda feat: {"fillColor": feat["properties"]["color"]}
-
-        self.add_gdf(
-            gdf,
-            layer_name=layer_name,
-            style=style,
-            hover_style=hover_style,
-            style_callback=style_callback,
-            info_mode=info_mode,
-            encoding=encoding,
-            **kwargs,
-        )
-        if add_legend:
-            self.add_legend(title=legend_title, legend_dict=legend_dict)
-
-    def user_roi_coords(self, decimals=4):
-        """Return the bounding box of the ROI as a list of coordinates.
-
-        Args:
-            decimals (int, optional): Number of decimals to round the coordinates to. Defaults to 4.
-        """
-        return bbox_coords(self.user_roi, decimals=decimals)
-
-    def _point_info(self, latlon, decimals=3, return_node=False):
-        """Create the ipytree widget for displaying the mouse clicking info.
-
-        Args:
-            latlon (list | tuple): The coordinates (lat, lon) of the point.
-            decimals (int, optional): Number of decimals to round the coordinates to. Defaults to 3.
-            return_node (bool, optional): If True, return the ipytree node.
-                Otherwise, return the ipytree tree widget. Defaults to False.
-
-        Returns:
-            ipytree.Node | ipytree.Tree: The ipytree node or tree widget.
-        """
-        point_nodes = [
-            Node(f"Longitude: {latlon[1]}"),
-            Node(f"Latitude: {latlon[0]}"),
-            Node(f"Zoom Level: {self.zoom}"),
-            Node(f"Scale (approx. m/px): {self.get_scale()}"),
-        ]
-        label = f"Point ({latlon[1]:.{decimals}f}, {latlon[0]:.{decimals}f}) at {int(self.get_scale())}m/px"
-        root_node = Node(
-            label, nodes=point_nodes, icon="map", opened=self._expand_point
-        )
-
-        root_node.open_icon = "plus-square"
-        root_node.open_icon_style = "success"
-        root_node.close_icon = "minus-square"
-        root_node.close_icon_style = "info"
-
-        if return_node:
-            return root_node
-        else:
-            return Tree(nodes=[root_node])
-
-    def _pixels_info(self, latlon, return_node=False):
-        """Create the ipytree widget for displaying the pixel values at the mouse clicking point.
-
-        Args:
-            latlon (list | tuple): The coordinates (lat, lon) of the point.
-            return_node (bool, optional): If True, return the ipytree node.
-                Otherwise, return the ipytree tree widget. Defaults to False.
-
-        Returns:
-            ipytree.Node | ipytree.Tree: The ipytree node or tree widget.
-        """
-        layers = self.ee_layers
-        xy = ee.Geometry.Point(latlon[::-1])
-        sample_scale = self.getScale()
-
-        root_node = Node("Pixels", icon="archive")
-
-        nodes = []
-
-        for index, ee_object in enumerate(layers):
-            layer_names = self.ee_layer_names
-            layer_name = layer_names[index]
-            object_type = ee_object.__class__.__name__
-
-            if not self.ee_layer_dict[layer_name]["ee_layer"].visible:
-                continue
-
-            try:
-                if isinstance(ee_object, ee.ImageCollection):
-                    ee_object = ee_object.mosaic()
-
-                if isinstance(ee_object, ee.Image):
-                    item = ee_object.reduceRegion(
-                        ee.Reducer.first(), xy, sample_scale
-                    ).getInfo()
-                    b_name = "band"
-                    if len(item) > 1:
-                        b_name = "bands"
-
-                    label = f"{layer_name}: {object_type} ({len(item)} {b_name})"
-                    layer_node = Node(label, opened=self._expand_pixels)
-
-                    keys = sorted(item.keys())
-                    for key in keys:
-                        layer_node.add_node(Node(f"{key}: {item[key]}", icon="file"))
-
-                    nodes.append(layer_node)
-            except:
-                pass
-
-        root_node.nodes = nodes
-
-        root_node.open_icon = "plus-square"
-        root_node.open_icon_style = "success"
-        root_node.close_icon = "minus-square"
-        root_node.close_icon_style = "info"
-
-        if return_node:
-            return root_node
-        else:
-            return Tree(nodes=[root_node])
-
-    def _objects_info(self, latlon, return_node=False):
-        """Create the ipytree widget for displaying the Earth Engine objects at the mouse clicking point.
-
-        Args:
-            latlon (list | tuple): The coordinates (lat, lon) of the point.
-            return_node (bool, optional): If True, return the ipytree node.
-                Otherwise, return the ipytree tree widget. Defaults to False.
-
-        Returns:
-            ipytree.Node | ipytree.Tree: The ipytree node or tree widget.
-        """
-        layers = self.ee_layers
-        xy = ee.Geometry.Point(latlon[::-1])
-        root_node = Node("Objects", icon="archive")
-
-        nodes = []
-
-        for index, ee_object in enumerate(layers):
-            layer_names = self.ee_layer_names
-            layer_name = layer_names[index]
-
-            if not self.ee_layer_dict[layer_name]["ee_layer"].visible:
-                continue
-
-            if isinstance(ee_object, ee.FeatureCollection):
-
-                # Check geometry type
-                geom_type = ee.Feature(ee_object.first()).geometry().type()
-                lat, lon = latlon
-                delta = 0.005
-                bbox = ee.Geometry.BBox(
-                    lon - delta,
-                    lat - delta,
-                    lon + delta,
-                    lat + delta,
-                )
-                # Create a bounding box to filter points
-                xy = ee.Algorithms.If(
-                    geom_type.compareTo(ee.String("Point")),
-                    xy,
-                    bbox,
-                )
-
-                ee_object = ee_object.filterBounds(xy).first()
-
-            try:
-                node = get_info(
-                    ee_object, layer_name, opened=self._expand_objects, return_node=True
-                )
-                nodes.append(node)
-            except:
-                pass
-
-        root_node.nodes = nodes
-
-        root_node.open_icon = "plus-square"
-        root_node.open_icon_style = "success"
-        root_node.close_icon = "minus-square"
-        root_node.close_icon_style = "info"
-
-        if return_node:
-            return root_node
-        else:
-            return Tree(nodes=[root_node])
-
-    def inspector(self, latlon):
-        """Create the Inspector GUI.
-
-        Args:
-            latlon (list | tuple): The coordinates (lat, lon) of the point.
-        Returns:
-            ipytree.Tree: The ipytree tree widget for the Inspector GUI.
-        """
-        tree = Tree()
-        nodes = []
-        point_node = self._point_info(latlon, return_node=True)
-        nodes.append(point_node)
-        pixels_node = self._pixels_info(latlon, return_node=True)
-        if pixels_node.nodes:
-            nodes.append(pixels_node)
-        objects_node = self._objects_info(latlon, return_node=True)
-        if objects_node.nodes:
-            nodes.append(objects_node)
-        tree.nodes = nodes
-        return tree
 
 
 # The functions below are outside the Map class.
@@ -7438,20 +6670,6 @@ def ee_tile_layer(
         image = ee_object
     elif isinstance(ee_object, ee.imagecollection.ImageCollection):
         image = ee_object.mosaic()
-
-    if "palette" in vis_params:
-        if isinstance(vis_params["palette"], Box):
-            try:
-                vis_params["palette"] = vis_params["palette"]["default"]
-            except Exception as e:
-                print("The provided palette is invalid.")
-                raise Exception(e)
-        elif isinstance(vis_params["palette"], str):
-            vis_params["palette"] = check_cmap(vis_params["palette"])
-        elif not isinstance(vis_params["palette"], list):
-            raise ValueError(
-                "The palette must be a list of colors or a string or a Box object."
-            )
 
     map_id_dict = ee.Image(image).getMapId(vis_params)
     tile_layer = ipyleaflet.TileLayer(
@@ -7583,12 +6801,12 @@ def ts_inspector(
 
     if layers_dict is None:
         layers_dict = {}
-        keys = dict(basemaps).keys()
+        keys = dict(basemap_tiles).keys()
         for key in keys:
-            if isinstance(basemaps[key], ipyleaflet.WMSLayer):
+            if isinstance(basemap_tiles[key], ipyleaflet.WMSLayer):
                 pass
             else:
-                layers_dict[key] = basemaps[key]
+                layers_dict[key] = basemap_tiles[key]
 
     keys = list(layers_dict.keys())
     if left_name is None:

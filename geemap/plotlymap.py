@@ -1,22 +1,15 @@
 import os
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import ipywidgets as widgets
 from .basemaps import xyz_to_plotly
 from .common import *
 from .osm import *
-from . import examples
 
 
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-except ImportError:
-    raise ImportError(
-        "This module requires the plotly package. Please install it using 'pip install plotly'."
-    )
-
-basemaps = xyz_to_plotly()
+plotly_basemaps = xyz_to_plotly()
 
 
 class Canvas:
@@ -195,16 +188,16 @@ class Map(go.FigureWidget):
         """Adds a basemap to the map.
 
         Args:
-            basemap (str, optional): Can be one of string from basemaps. Defaults to 'ROADMAP'.
+            basemap (str, optional): Can be one of string from plotly_basemaps. Defaults to 'ROADMAP'.
         """
-        if basemap not in basemaps:
+        if basemap not in plotly_basemaps:
             raise ValueError(
-                f"Basemap {basemap} not found. Choose from {','.join(basemaps.keys())}"
+                f"Basemap {basemap} not found. Choose from {','.join(plotly_basemaps.keys())}"
             )
 
         if basemap in self.get_tile_layers():
             self.remove_basemap(basemap)
-        layers = list(self.layout.mapbox.layers) + [basemaps[basemap]]
+        layers = list(self.layout.mapbox.layers) + [plotly_basemaps[basemap]]
         self.update_layout(mapbox_layers=layers)
 
     def remove_basemap(self, name):
@@ -415,10 +408,6 @@ class Map(go.FigureWidget):
         from box import Box
 
         image = None
-
-        if vis_params is None:
-            vis_params = {}
-
         if name is None:
             layer_count = len(self.layout.mapbox.layers)
             name = "Layer " + str(layer_count + 1)
@@ -463,27 +452,17 @@ class Map(go.FigureWidget):
         elif isinstance(ee_object, ee.imagecollection.ImageCollection):
             image = ee_object.mosaic()
 
-        if "palette" in vis_params:
-            if isinstance(vis_params["palette"], tuple):
-                vis_params["palette"] = list(vis_params["palette"])
-            if isinstance(vis_params["palette"], Box):
-                try:
-                    vis_params["palette"] = vis_params["palette"]["default"]
-                except Exception as e:
-                    print("The provided palette is invalid.")
-                    raise Exception(e)
-            elif isinstance(vis_params["palette"], str):
-                vis_params["palette"] = check_cmap(vis_params["palette"])
-            elif not isinstance(vis_params["palette"], list):
-                raise ValueError(
-                    "The palette must be a list of colors or a string or a Box object."
-                )
+        if "palette" in vis_params and isinstance(vis_params["palette"], Box):
+            try:
+                vis_params["palette"] = vis_params["palette"]["default"]
+            except Exception as e:
+                print("The provided palette is invalid.")
+                raise Exception(e)
 
         map_id_dict = ee.Image(image).getMapId(vis_params)
         url = map_id_dict["tile_fetcher"].url_format
-        self.add_tile_layer(
-            url, name=name, attribution="Google Earth Engine", opacity=opacity, **kwargs
-        )
+        self.add_tile_layer(url, name=name, attribution="Google Earth Engine",
+                            opacity=opacity, **kwargs)
         self.set_layer_visibility(name=name, show=shown)
 
     addLayer = add_ee_layer
@@ -518,7 +497,7 @@ class Map(go.FigureWidget):
         self,
         url=None,
         collection=None,
-        item=None,
+        items=None,
         assets=None,
         bands=None,
         titiler_endpoint=None,
@@ -532,7 +511,7 @@ class Map(go.FigureWidget):
         Args:
             url (str): HTTP URL to a STAC item, e.g., https://canada-spot-ortho.s3.amazonaws.com/canada_spot_orthoimages/canada_spot5_orthoimages/S5_2007/S5_11055_6057_20070622/S5_11055_6057_20070622.json
             collection (str): The Microsoft Planetary Computer STAC collection ID, e.g., landsat-8-c2-l2.
-            item (str): The Microsoft Planetary Computer STAC item ID, e.g., LC08_L2SP_047027_20201204_02_T1.
+            items (str): The Microsoft Planetary Computer STAC item ID, e.g., LC08_L2SP_047027_20201204_02_T1.
             assets (str | list): The Microsoft Planetary Computer STAC asset ID, e.g., ["SR_B7", "SR_B5", "SR_B4"].
             bands (list): A list of band names, e.g., ["SR_B7", "SR_B5", "SR_B4"]
             titiler_endpoint (str, optional): Titiler endpoint, e.g., "https://titiler.xyz", "planetary-computer", "pc". Defaults to None.
@@ -541,9 +520,9 @@ class Map(go.FigureWidget):
             opacity (float, optional): The opacity of the layer. Defaults to 1.
         """
         tile_url = stac_tile(
-            url, collection, item, assets, bands, titiler_endpoint, **kwargs
+            url, collection, items, assets, bands, titiler_endpoint, **kwargs
         )
-        center = stac_center(url, collection, item, titiler_endpoint)
+        center = stac_center(url, collection, items, titiler_endpoint)
         self.add_tile_layer(tile_url, name, attribution, opacity)
         self.set_center(lon=center[0], lat=center[1], zoom=10)
 
@@ -741,7 +720,7 @@ class Map(go.FigureWidget):
             raise ValueError("gdf must be a GeoDataFrame.")
 
         gdf = gdf.to_crs(epsg=4326)
-        # geom_type = gdf_geom_type(gdf)
+        geom_type = gdf_geom_type(gdf)
         center_lon, center_lat = gdf_centroid(gdf)
 
         if isinstance(label_col, str):

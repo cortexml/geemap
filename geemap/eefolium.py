@@ -9,8 +9,6 @@ from folium import plugins
 from .common import *
 from .conversion import *
 from .legends import builtin_legends
-from . import examples
-
 
 # More WMS basemaps can be found at https://viewer.nationalmap.gov/services/
 ee_basemaps = {
@@ -269,8 +267,6 @@ class Map(folium.Map):
         from box import Box
 
         image = None
-        if vis_params is None:
-            vis_params = {}
 
         if (
             not isinstance(ee_object, ee.Image)
@@ -312,21 +308,12 @@ class Map(folium.Map):
         elif isinstance(ee_object, ee.imagecollection.ImageCollection):
             image = ee_object.mosaic()
 
-        if "palette" in vis_params:
-            if isinstance(vis_params["palette"], tuple):
-                vis_params["palette"] = list(vis_params["palette"])
-            if isinstance(vis_params["palette"], Box):
-                try:
-                    vis_params["palette"] = vis_params["palette"]["default"]
-                except Exception as e:
-                    print("The provided palette is invalid.")
-                    raise Exception(e)
-            elif isinstance(vis_params["palette"], str):
-                vis_params["palette"] = check_cmap(vis_params["palette"])
-            elif not isinstance(vis_params["palette"], list):
-                raise ValueError(
-                    "The palette must be a list of colors or a string or a Box object."
-                )
+        if "palette" in vis_params and isinstance(vis_params["palette"], Box):
+            try:
+                vis_params["palette"] = vis_params["palette"]["default"]
+            except Exception as e:
+                print("The provided palette is invalid.")
+                raise Exception(e)
 
         map_id_dict = ee.Image(image).getMapId(vis_params)
 
@@ -558,44 +545,35 @@ class Map(folium.Map):
 
     def add_stac_layer(
         self,
-        url=None,
-        collection=None,
-        item=None,
-        assets=None,
+        url,
         bands=None,
-        titiler_endpoint=None,
-        name="STAC Layer",
+        name="Untitled",
         attribution=".",
         opacity=1.0,
         shown=True,
+        titiler_endpoint="https://titiler.xyz",
         **kwargs,
     ):
         """Adds a STAC TileLayer to the map.
 
         Args:
-            url (str): HTTP URL to a STAC item, e.g., https://canada-spot-ortho.s3.amazonaws.com/canada_spot_orthoimages/canada_spot5_orthoimages/S5_2007/S5_11055_6057_20070622/S5_11055_6057_20070622.json
-            collection (str): The Microsoft Planetary Computer STAC collection ID, e.g., landsat-8-c2-l2.
-            item (str): The Microsoft Planetary Computer STAC item ID, e.g., LC08_L2SP_047027_20201204_02_T1.
-            assets (str | list): The Microsoft Planetary Computer STAC asset ID, e.g., ["SR_B7", "SR_B5", "SR_B4"].
-            bands (list): A list of band names, e.g., ["SR_B7", "SR_B5", "SR_B4"]
-            titiler_endpoint (str, optional): Titiler endpoint, e.g., "https://titiler.xyz", "planetary-computer", "pc". Defaults to None.
-            name (str, optional): The layer name to use for the layer. Defaults to 'STAC Layer'.
-            attribution (str, optional): The attribution to use. Defaults to ''.
+            url (str): The URL of the COG tile layer.
+            name (str, optional): The layer name to use for the layer. Defaults to 'Untitled'.
+            attribution (str, optional): The attribution to use. Defaults to '.'.
             opacity (float, optional): The opacity of the layer. Defaults to 1.
             shown (bool, optional): A flag indicating whether the layer should be on by default. Defaults to True.
+            titiler_endpoint (str, optional): Titiler endpoint. Defaults to "https://titiler.xyz".
         """
-        tile_url = stac_tile(
-            url, collection, item, assets, bands, titiler_endpoint, **kwargs
-        )
-        bounds = stac_bounds(url, collection, item, titiler_endpoint)
+        tile_url = stac_tile(url, bands, titiler_endpoint, **kwargs)
+        center = stac_center(url, titiler_endpoint)
         self.add_tile_layer(
-            url=tile_url,
+            tiles=tile_url,
             name=name,
             attribution=attribution,
             opacity=opacity,
             shown=shown,
         )
-        self.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+        self.set_center(lon=center[0], lat=center[1], zoom=10)
 
     def add_legend(
         self,
@@ -944,7 +922,7 @@ class Map(folium.Map):
         name="Folium Map",
         description="",
         source_url="",
-        visibility="DEFAULT",
+        visibility="PUBLIC",
         open=True,
         tags=None,
         **kwargs,
@@ -955,7 +933,7 @@ class Map(folium.Map):
             name (str, optional): The document name - can include spaces, caps, symbols, etc., e.g. "Profit & Loss 2020". Defaults to "Folium Map".
             description (str, optional): A high-level description for the document, this is displayed in searches and thumbnails. Defaults to ''.
             source_url (str, optional): A URL pointing to the source code for the document, e.g. a GitHub repo or a Colab notebook. Defaults to ''.
-            visibility (str, optional): Visibility of the map. It can be one of the following: PORTFOLIO, PRIVATE, DEFAULT. Defaults to 'DEFAULT'.
+            visibility (str, optional): Visibility of the map. It can be one of the following: PUBLIC, PRIVATE. Defaults to 'PUBLIC'.
             open (bool, optional): Whether to open the map. Defaults to True.
             tags (bool, optional): A list of tags (as strings) used to categorise your document. Defaults to None.
         """
@@ -973,19 +951,17 @@ class Map(folium.Map):
 
             visibility = visibility.upper()
 
-            if visibility not in ["DEFAULT", "PRIVATE", "PORTFOLIO"]:
+            if visibility not in ["PUBLIC", "PRIVATE"]:
                 raise ValueError(
-                    "The visibility argument must be either DEFAULT or PRIVATE or PORTFOLIO."
+                    "The visibility argument must be either PUBLIC or PRIVATE."
                 )
 
-            if visibility == "PRIVATE":
-                visibility = dp.Visibility.PRIVATE
-            elif visibility == "PORTFOLIO":
-                visibility = dp.Visibility.PORTFOLIO
+            if visibility == "PUBLIC":
+                visibility = dp.Visibility.PUBLIC
             else:
-                visibility = dp.Visibility.DEFAULT
+                visibility = dp.Visibility.PRIVATE
 
-            dp.Report(dp.Plot(self)).upload(
+            dp.Report(dp.Plot(self)).publish(
                 name=name,
                 description=description,
                 source_url=source_url,

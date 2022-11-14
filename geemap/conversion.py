@@ -117,7 +117,7 @@ def format_params(line, sep=":"):
         bracket_index = line.index("{")
         if bracket_index < indices[0]:
             prefix = line[: bracket_index + 1]
-            line = line[bracket_index + 1 :]
+            line = line[bracket_index + 1:]
 
     if count > 0:
         items = line.split(sep)
@@ -183,9 +183,9 @@ def convert_for_loop(line):
     end_index = line.index(")")
 
     prefix = line[:(start_index)]
-    suffix = line[(end_index + 1) :]
+    suffix = line[(end_index + 1):]
 
-    params = line[(start_index + 1) : end_index]
+    params = line[(start_index + 1): end_index]
 
     if " in " in params and params.count(";") == 0:
         new_line = prefix + "{}:".format(params) + suffix
@@ -210,7 +210,7 @@ def convert_for_loop(line):
         step = -1
 
     prefix = line[:(start_index)]
-    suffix = line[(end_index + 1) :]
+    suffix = line[(end_index + 1):]
     new_line = (
         prefix
         + "{} in range({}, {}, {}):".format(param_name, start, end, step)
@@ -248,7 +248,7 @@ def check_map_functions(input_lines):
             output_lines.append(func_header)
 
             for sub_index, tmp_line in enumerate(
-                input_lines[index + 1 : matching_line_index]
+                input_lines[index + 1: matching_line_index]
             ):
                 output_lines.append(tmp_line)
                 input_lines[index + 1 + sub_index] = ""
@@ -260,7 +260,7 @@ def check_map_functions(input_lines):
             output_lines.append(func_footer)
 
             footer_line = input_lines[matching_line_index][
-                matching_char_index + 1 :
+                matching_char_index + 1:
             ].strip()
             if footer_line == ")" or footer_line == ");":
                 header_line = header_line + footer_line
@@ -276,9 +276,7 @@ def check_map_functions(input_lines):
     return output_lines
 
 
-def js_to_python(
-    in_file, out_file=None, use_qgis=True, github_repo=None, show_map=True
-):
+def js_to_python(in_file, out_file=None, use_qgis=True, github_repo=None):
     """Converts an Earth Engine JavaScript to Python script.
 
     Args:
@@ -286,7 +284,6 @@ def js_to_python(
         out_file (str, optional): File path of the output Python script. Defaults to None.
         use_qgis (bool, optional): Whether to add "from ee_plugin import Map \n" to the output script. Defaults to True.
         github_repo (str, optional): GitHub repo url. Defaults to None.
-        show_map (bool, optional): Whether to add "Map" to the output script. Defaults to True.
 
     Returns:
         list: Python script
@@ -303,11 +300,9 @@ def js_to_python(
 
     is_python = False
     # add_github_url = False
-    import_str = ""
+    qgis_import_str = ""
     if use_qgis:
-        import_str = "from ee_plugin import Map\n"
-    # else:
-    #     import_str = "import geemap\n\nMap = geemap.Map()\n"
+        qgis_import_str = "from ee_plugin import Map \n"
 
     github_url = ""
     if github_repo is not None:
@@ -336,7 +331,7 @@ def js_to_python(
         output = github_url + "".join(map(str, lines))
     else:  # deal with JavaScript
 
-        header = github_url + "import ee \n" + math_import_str + import_str
+        header = github_url + "import ee \n" + qgis_import_str + math_import_str
         # function_defs = []
         output = header + "\n"
 
@@ -350,7 +345,7 @@ def js_to_python(
                 if ("/* color" in line) and ("*/" in line):
                     line = (
                         line[: line.index("/*")].lstrip()
-                        + line[(line.index("*/") + 2) :]
+                        + line[(line.index("*/") + 2):]
                     )
 
                 if (
@@ -371,16 +366,16 @@ def js_to_python(
                         matching_char_index,
                     ) = find_matching_bracket(lines, index, bracket_index)
 
-                    line = line[:bracket_index] + line[bracket_index + 1 :]
+                    line = line[:bracket_index] + line[bracket_index + 1:]
                     if matching_line_index == index:
                         line = (
-                            line[:matching_char_index] + line[matching_char_index + 1 :]
+                            line[:matching_char_index] + line[matching_char_index + 1:]
                         )
                     else:
                         tmp_line = lines[matching_line_index]
                         lines[matching_line_index] = (
                             tmp_line[:matching_char_index]
-                            + tmp_line[matching_char_index + 1 :]
+                            + tmp_line[matching_char_index + 1:]
                         )
 
                     line = (
@@ -422,7 +417,7 @@ def js_to_python(
                         tmp_line = lines[matching_line_index]
                         lines[matching_line_index] = (
                             tmp_line[:matching_char_index]
-                            + tmp_line[matching_char_index + 1 :]
+                            + tmp_line[matching_char_index + 1:]
                         )
                         line = line.replace("{", "")
 
@@ -474,9 +469,6 @@ def js_to_python(
                 else:
                     output += line + "\n"
 
-    if show_map:
-        output += "Map"
-
     out_dir = os.path.dirname(out_file)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -525,7 +517,7 @@ def js_snippet_to_py(
     try:
         with open(in_js, "w") as f:
             f.write(in_js_snippet)
-        js_to_python(in_js, out_file=out_py, use_qgis=False, show_map=show_map)
+        js_to_python(in_js, out_file=out_py, use_qgis=False)
 
         out_lines = []
         if import_ee:
@@ -553,11 +545,14 @@ def js_snippet_to_py(
                 elif index == (len(lines) - 1) and lines[index].strip() != "":
                     out_lines.append(line)
 
+        if show_map:
+            out_lines.append("Map\n")
+
         os.remove(in_js)
         os.remove(out_py)
 
         if add_new_cell:
-            contents = "".join(out_lines).strip()
+            contents = "".join(out_lines)
             create_new_cell(contents)
         else:
             return out_lines
@@ -589,10 +584,7 @@ def js_to_python_dir(in_dir, out_dir=None, use_qgis=True, github_repo=None):
 
     for index, in_file in enumerate(files):
         print(f"Processing {index + 1}/{len(files)}: {in_file}")
-        # if use_qgis:
-        #     out_file = os.path.splitext(in_file)[0] + "_qgis.py"
-        # else:
-        out_file = os.path.splitext(in_file)[0] + "_geemap.py"
+        out_file = os.path.splitext(in_file)[0] + "_qgis.py"
         out_file = out_file.replace(in_dir, out_dir)
         js_to_python(in_file, out_file, use_qgis, github_repo)
     # print("Output Python script folder: {}".format(out_dir))
@@ -632,11 +624,9 @@ def remove_qgis_import(in_file):
                 while True:
                     line_tmp = lines[start_index + i].strip()
                     if line_tmp != "":
-                        return lines[start_index + i :]
+                        return lines[start_index + i:]
                     else:
                         i = i + 1
-            elif "Map = geemap.Map()" in line:
-                return lines[index + 1 :]
 
 
 def get_js_examples(out_dir=None):
@@ -719,7 +709,7 @@ def template_header(in_template):
         template_lines = f.readlines()
         for index, line in enumerate(template_lines):
             if "## Add Earth Engine Python script" in line:
-                header_end_index = index + 6
+                header_end_index = index + 5
 
     header = template_lines[:header_end_index]
 
@@ -742,8 +732,8 @@ def template_footer(in_template):
     with open(in_template, encoding="utf-8") as f:
         template_lines = f.readlines()
         for index, line in enumerate(template_lines):
-            if "## Display the interactive map" in line:
-                footer_start_index = index - 2
+            if "## Display Earth Engine data layers" in line:
+                footer_start_index = index - 3
 
     footer = ["\n"] + template_lines[footer_start_index:]
 
@@ -752,7 +742,7 @@ def template_footer(in_template):
 
 def py_to_ipynb(
     in_file,
-    template_file=None,
+    template_file,
     out_file=None,
     github_username=None,
     github_repo=None,
@@ -767,25 +757,18 @@ def py_to_ipynb(
         github_repo (str, optional): GitHub repo name. Defaults to None.
     """
     in_file = os.path.abspath(in_file)
-
-    if template_file is None:
-        template_file = get_nb_template()
-
     if out_file is None:
-        out_file = os.path.splitext(in_file)[0] + ".ipynb"
+        out_file = os.path.splitext(in_file)[0].replace("_qgis", "") + ".ipynb"
 
-    out_py_file = os.path.splitext(out_file)[0] + "_tmp.py"
+    out_py_file = os.path.splitext(out_file)[0] + ".py"
 
     out_dir = os.path.dirname(out_file)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     if out_dir == os.path.dirname(in_file):
-        out_py_file = os.path.splitext(out_file)[0] + "_tmp.py"
+        out_py_file = os.path.splitext(out_file)[0] + ".py"
 
-    print(in_file)
     content = remove_qgis_import(in_file)
-    if content[-1].strip() == "Map":
-        content = content[:-1]
     header = template_header(template_file)
     footer = template_footer(template_file)
 
@@ -793,7 +776,7 @@ def py_to_ipynb(
 
         out_py_path = str(out_file).split("/")
         index = out_py_path.index(github_repo)
-        out_py_relative_path = "/".join(out_py_path[index + 1 :])
+        out_py_relative_path = "/".join(out_py_path[index + 1:])
         out_ipynb_relative_path = out_py_relative_path.replace(".py", ".ipynb")
 
         new_header = []
@@ -812,8 +795,6 @@ def py_to_ipynb(
     else:
         out_text = header + footer
 
-    out_text = out_text[:-1] + [out_text[-1].strip()]
-
     if not os.path.exists(os.path.dirname(out_py_file)):
         os.makedirs(os.path.dirname(out_py_file))
 
@@ -830,21 +811,18 @@ def py_to_ipynb(
         print("pip install ipynb-py-convert")
         raise Exception(e)
 
-    try:
-        os.remove(out_py_file)
-    except Exception as e:
-        print(e)
+    # os.remove(out_py_file)
 
 
 def py_to_ipynb_dir(
-    in_dir, template_file=None, out_dir=None, github_username=None, github_repo=None
+    in_dir, template_file, out_dir=None, github_username=None, github_repo=None
 ):
     """Converts Earth Engine Python scripts in a folder recursively to Jupyter notebooks.
 
     Args:
         in_dir (str): Input folder containing Earth Engine Python scripts.
-        out_dir str, optional): Output folder. Defaults to None.
         template_file (str): Input jupyter notebook template file.
+        out_dir str, optional): Output folder. Defaults to None.
         github_username (str, optional): GitHub username. Defaults to None.
         github_repo (str, optional): GitHub repo name. Defaults to None.
     """
@@ -852,7 +830,7 @@ def py_to_ipynb_dir(
 
     in_dir = os.path.abspath(in_dir)
     files = []
-    qgis_files = list(Path(in_dir).rglob("*_geemap.py"))
+    qgis_files = list(Path(in_dir).rglob("*_qgis.py"))
     py_files = list(Path(in_dir).rglob("*.py"))
 
     if len(qgis_files) == len(py_files) / 2:
@@ -923,7 +901,7 @@ def update_nb_header(in_file, github_username=None, github_repo=None):
         github_repo = "geemap"
 
     index = in_file.index(github_repo)
-    file_relative_path = in_file[index + len(github_repo) + 1 :]
+    file_relative_path = in_file[index + len(github_repo) + 1:]
 
     output_lines = []
 

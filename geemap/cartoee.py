@@ -15,12 +15,9 @@ import requests
 from matplotlib import cm, colors
 from matplotlib import font_manager as mfonts
 
-from .basemaps import xyz_tiles
-
 try:
 
     import cartopy.crs as ccrs
-    import cartopy.io.img_tiles as cimgt
     from cartopy.mpl.geoaxes import GeoAxes, GeoAxesSubplot
     from cartopy.mpl.gridliner import LATITUDE_FORMATTER, LONGITUDE_FORMATTER
     from PIL import Image
@@ -117,15 +114,13 @@ def check_dependencies():
 # check_dependencies()
 
 
-def get_map(ee_object, proj=None, basemap=None, zoom_level=2, **kwargs):
+def get_map(ee_object, proj=None, **kwargs):
     """
     Wrapper function to create a new cartopy plot with project and adds Earth
     Engine image results
     Args:
         ee_object (ee.Image | ee.FeatureCollection): Earth Engine image result to plot
         proj (cartopy.crs, optional): Cartopy projection that determines the projection of the resulting plot. By default uses an equirectangular projection, PlateCarree
-        basemap (str, optional): Basemap to use. It can be one of ["ROADMAP", "SATELLITE", "TERRAIN", "HYBRID"] or cartopy.io.img_tiles, such as cimgt.StamenTerrain(). Defaults to None. See https://scitools.org.uk/cartopy/docs/v0.19/cartopy/io/img_tiles.html
-        zoom_level (int, optional): Zoom level of the basemap. Defaults to 2.
         **kwargs: remaining keyword arguments are passed to addLayer()
     Returns:
         ax (cartopy.mpl.geoaxes.GeoAxesSubplot): cartopy GeoAxesSubplot object with Earth Engine results displayed
@@ -158,17 +153,6 @@ def get_map(ee_object, proj=None, basemap=None, zoom_level=2, **kwargs):
         del kwargs["style"]
 
     ax = mpl.pyplot.axes(projection=proj)
-
-    if basemap is not None:
-        if isinstance(basemap, str):
-            if basemap.upper() in ["ROADMAP", "SATELLITE", "TERRAIN", "HYBRID"]:
-                basemap = cimgt.GoogleTiles(url=xyz_tiles[basemap.upper()]["url"])
-
-        try:
-            ax.add_image(basemap, zoom_level)
-        except Exception as e:
-            print("Failed to add basemap: ", e)
-
     add_layer(ax, ee_object, **kwargs)
 
     return ax
@@ -228,11 +212,6 @@ def add_layer(
         x, y = list(zip(*map_region[0]))
         view_extent = [min(x), max(x), min(y), max(y)]
 
-        if ee_object.bandNames().getInfo() == ["vis-red", "vis-green", "vis-blue"]:
-            warnings.warn(
-                f"The region parameter is not specified. Using the default region {map_region}. Please specify a region if you get a blank image."
-            )
-
     if type(dims) not in [list, tuple, int]:
         raise ValueError("provided dims not of type list, tuple, or int")
 
@@ -278,7 +257,6 @@ def add_layer(
         extent=view_extent,
         origin="upper",
         transform=ccrs.PlateCarree(),
-        zorder=1,
     )
 
     return
@@ -440,30 +418,24 @@ def add_colorbar(
     if "tick_font_size" in kwargs:
         tick_font_size = kwargs.pop("tick_font_size")
 
-    label_font_family = None
-    if "label_font_family" in kwargs:
-        label_font_family = kwargs.pop("label_font_family")
-
     label_font_size = None
     if "label_font_size" in kwargs:
         label_font_size = kwargs.pop("label_font_size")
 
     cb = mpl.colorbar.ColorbarBase(cax, norm=norm, alpha=alpha, cmap=cmap, **kwargs)
 
-    if label is not None:
-        if label_font_size is not None and label_font_family is not None:
-            cb.set_label(label, fontsize=label_font_size, family=label_font_family)
-        elif label_font_size is not None and label_font_family is None:
+    if "bands" in vis_keys:
+        cb.set_label(vis_params["bands"])
+    elif label is not None:
+        if label_font_size is not None:
             cb.set_label(label, fontsize=label_font_size)
-        elif label_font_size is None and label_font_family is not None:
-            cb.set_label(label, family=label_font_family)
         else:
             cb.set_label(label)
-    elif "bands" in vis_keys:
-        cb.set_label(vis_params["bands"])
 
     if tick_font_size is not None:
         cb.ax.tick_params(labelsize=tick_font_size)
+
+    return
 
 
 def _buffer_box(bbox, interval):
@@ -1008,7 +980,7 @@ def add_scale_bar_lite(
             if str(x)[0] in ["1", "2", "5"]:
                 return int(x)
             else:
-                return scale_number(x - 10**ndim)
+                return scale_number(x - 10 ** ndim)
 
         length = scale_number(length)
         num = length
@@ -1034,56 +1006,16 @@ def add_scale_bar_lite(
     return
 
 
-def create_legend(
-    linewidth=None,
-    linestyle=None,
-    color=None,
-    marker=None,
-    markersize=None,
-    markeredgewidth=None,
-    markeredgecolor=None,
-    markerfacecolor=None,
-    markerfacecoloralt=None,
-    fillstyle=None,
-    antialiased=None,
-    dash_capstyle=None,
-    solid_capstyle=None,
-    dash_joinstyle=None,
-    solid_joinstyle=None,
-    pickradius=5,
-    drawstyle=None,
-    markevery=None,
-    **kwargs,
-):
-    if linewidth is None and marker is None:
-        raise ValueError("Either linewidth or marker must be specified.")
-
-
-def add_legend(
-    ax,
-    legend_elements=None,
-    loc="lower right",
-    font_size=14,
-    font_weight="normal",
-    font_color="black",
-    font_family=None,
-    title=None,
-    title_fontize=16,
-    title_fontproperties=None,
-):
+def add_legend(ax, legend_elements=None, loc="lower right"):
     """Adds a legend to the map. The legend elements can be formatted as:
     legend_elements = [Line2D([], [], color='#00ffff', lw=2, label='Coastline'),
         Line2D([], [], marker='o', color='#A8321D', label='City', markerfacecolor='#A8321D', markersize=10, ls ='')]
-        For more legend properties, see: https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
     Args:
         ax (cartopy.mpl.geoaxes.GeoAxesSubplot | cartopy.mpl.geoaxes.GeoAxes): required cartopy GeoAxesSubplot object.
         legend_elements (list, optional): A list of legend elements. Defaults to None.
         loc (str, optional): Location of the legend, can be any of ['upper left', 'upper right', 'lower left', 'lower right']. Defaults to "lower right".
-        font_size(int|string, optional): Font size. Either an absolute font size or an relative value of 'xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large'. defaults to 14.
-        font_weight(string|int, optional): Font weight. A numeric value in the range 0-1000 or one of 'ultralight', 'light', 'normal' (default), 'regular', 'book', 'medium', 'roman', 'semibold', 'demibold', 'demi', 'bold', 'heavy', 'extra bold', 'black'. Defaults to 'normal'.
-        font_color(str, optional): Text color. Defaults to "black".
-        font_family(string, optional): Name of font family. Set to a font family like 'SimHei' if you want to show Chinese in the legend. Defaults to None.
+
     Raises:
         Exception: If the legend fails to add.
     """
@@ -1104,23 +1036,8 @@ def add_legend(
                     ls="",
                 ),
             ]
-        if font_family is not None:
-            fontdict = {"family": font_family, "size": font_size, "weight": font_weight}
-        else:
-            fontdict = {"size": font_size, "weight": font_weight}
-        leg = ax.legend(
-            handles=legend_elements,
-            loc=loc,
-            prop=fontdict,
-            title=title,
-            title_fontize=title_fontize,
-            title_fontproperties=title_fontproperties,
-        )
 
-        # Change font color If default color is changed.
-        if font_color != "black":
-            for text in leg.get_texts():
-                text.set_color(font_color)
+        ax.legend(handles=legend_elements, loc=loc)
         return
     except Exception as e:
         raise Exception(e)
@@ -1198,7 +1115,7 @@ def get_image_collection_gif(
         fig = plt.figure(figsize=fig_size)
 
         # Set the facecolor
-        fig.patch.set_facecolor("white")
+        fig.patch.set_facecolor('white')
 
         # Plot image
         ax = get_map(image, region=region, vis_params=vis_params, cmap=cmap, proj=proj)
@@ -1219,12 +1136,7 @@ def get_image_collection_gif(
             add_north_arrow(ax, **north_arrow_dict)
 
         # Save plot
-        plt.savefig(
-            fname=out_img,
-            dpi=dpi_plot,
-            bbox_inches="tight",
-            facecolor=fig.get_facecolor(),
-        )
+        plt.savefig(fname=out_img, dpi=dpi_plot, bbox_inches='tight', facecolor=fig.get_facecolor())
 
         plt.clf()
         plt.close()

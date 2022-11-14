@@ -1,5 +1,5 @@
 """
-This module defines here-map-widget-for-jupyter as backend for geemap library.
+This module defines here-map-widget-for-jupyter as backend for leafmap library.
 For more details about Here Map Widget for Jupyter
 please check: https://github.com/heremaps/here-map-widget-for-jupyter
 """
@@ -8,19 +8,11 @@ import os
 import json
 import random
 import requests
+import here_map_widget
 import ipywidgets as widgets
 from box import Box
 from .basemaps import xyz_to_heremap
-from .common import *
-from . import examples
-
-try:
-    import here_map_widget
-except ImportError:
-    raise ImportError(
-        'This module requires the hermap package. Please install it using "pip install here-map-widget-for-jupyter".'
-    )
-
+from .common import ee_initialize, shp_to_geojson, gdf_to_geojson, vector_to_geojson, random_string
 
 from here_map_widget import (
     FullscreenControl,
@@ -36,7 +28,7 @@ from here_map_widget import (
 )
 
 
-basemaps = Box(xyz_to_heremap(), frozen_box=True)
+here_basemaps = Box(xyz_to_heremap(), frozen_box=True)
 
 
 class Map(here_map_widget.Map):
@@ -73,7 +65,7 @@ class Map(here_map_widget.Map):
             kwargs["zoom"] = 2
 
         if "basemap" in kwargs:
-            kwargs["basemap"] = basemaps[kwargs["basemap"]]
+            kwargs["basemap"] = here_basemaps[kwargs["basemap"]]
 
         super().__init__(api_key=api_key, **kwargs)
         self.baseclass = "here_map_widget"
@@ -158,12 +150,12 @@ class Map(here_map_widget.Map):
                     )
                 )
                 self.basemap = layer
-            elif basemap in basemaps and basemaps[basemap] not in self.layers:
-                self.basemap = basemaps[basemap]
+            elif basemap in here_basemaps and here_basemaps[basemap] not in self.layers:
+                self.basemap = here_basemaps[basemap]
         except Exception:
             raise ValueError(
                 "Basemap can only be one of the following:\n  {}".format(
-                    "\n  ".join(basemaps.keys())
+                    "\n  ".join(here_basemaps.keys())
                 )
             )
 
@@ -212,10 +204,6 @@ class Map(here_map_widget.Map):
         from box import Box
 
         image = None
-
-        if vis_params is None:
-            vis_params = {}
-
         if name is None:
             layer_count = len(self.layout.mapbox.layers)
             name = "Layer " + str(layer_count + 1)
@@ -260,27 +248,17 @@ class Map(here_map_widget.Map):
         elif isinstance(ee_object, ee.imagecollection.ImageCollection):
             image = ee_object.mosaic()
 
-        if "palette" in vis_params:
-            if isinstance(vis_params["palette"], tuple):
-                vis_params["palette"] = list(vis_params["palette"])
-            if isinstance(vis_params["palette"], Box):
-                try:
-                    vis_params["palette"] = vis_params["palette"]["default"]
-                except Exception as e:
-                    print("The provided palette is invalid.")
-                    raise Exception(e)
-            elif isinstance(vis_params["palette"], str):
-                vis_params["palette"] = check_cmap(vis_params["palette"])
-            elif not isinstance(vis_params["palette"], list):
-                raise ValueError(
-                    "The palette must be a list of colors or a string or a Box object."
-                )
+        if "palette" in vis_params and isinstance(vis_params["palette"], Box):
+            try:
+                vis_params["palette"] = vis_params["palette"]["default"]
+            except Exception as e:
+                print("The provided palette is invalid.")
+                raise Exception(e)
 
         map_id_dict = ee.Image(image).getMapId(vis_params)
         url = map_id_dict["tile_fetcher"].url_format
-        self.add_tile_layer(
-            url, name=name, attribution="Google Earth Engine", opacity=opacity, **kwargs
-        )
+        self.add_tile_layer(url, name=name, attribution="Google Earth Engine",
+                            opacity=opacity, **kwargs)
 
     addLayer = add_ee_layer
 
@@ -665,7 +643,7 @@ class Map(here_map_widget.Map):
 
     def to_html(
         self,
-        filename=None,
+        outfile=None,
         title="My Map",
         width="100%",
         height="880px",
@@ -674,7 +652,7 @@ class Map(here_map_widget.Map):
         """Saves the map as an HTML file.
 
         Args:
-            filename (str, optional): The output file path to the HTML file.
+            outfile (str, optional): The output file path to the HTML file.
             title (str, optional): The title of the HTML file. Defaults to 'My Map'.
             width (str, optional): The width of the map in pixels or percentage. Defaults to '100%'.
             height (str, optional): The height of the map in pixels. Defaults to '880px'.
@@ -684,15 +662,15 @@ class Map(here_map_widget.Map):
             from ipywidgets.embed import embed_minimal_html
 
             save = True
-            if filename is not None:
-                if not filename.endswith(".html"):
+            if outfile is not None:
+                if not outfile.endswith(".html"):
                     raise ValueError("The output file extension must be html.")
-                filename = os.path.abspath(filename)
-                out_dir = os.path.dirname(filename)
+                outfile = os.path.abspath(outfile)
+                out_dir = os.path.dirname(outfile)
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
             else:
-                filename = os.path.abspath(random_string() + ".html")
+                outfile = os.path.abspath(random_string() + ".html")
                 save = False
 
             before_width = self.layout.width
@@ -717,17 +695,17 @@ class Map(here_map_widget.Map):
             self.layout.width = width
             self.layout.height = height
 
-            embed_minimal_html(filename, views=[self], title=title, **kwargs)
+            embed_minimal_html(outfile, views=[self], title=title, **kwargs)
 
             self.layout.width = before_width
             self.layout.height = before_height
 
             if not save:
                 out_html = ""
-                with open(filename) as f:
+                with open(outfile) as f:
                     lines = f.readlines()
                     out_html = "".join(lines)
-                os.remove(filename)
+                os.remove(outfile)
                 return out_html
 
         except Exception as e:

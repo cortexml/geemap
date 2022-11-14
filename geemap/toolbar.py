@@ -199,7 +199,6 @@ def open_data_widget(m):
         m (object): geemap.Map
     """
     from .colormaps import list_colormaps
-
     padding = "0px 0px 0px 5px"
     style = {"description_width": "initial"}
 
@@ -465,14 +464,14 @@ def open_data_widget(m):
 
                         try:
                             if len(bands.value) > 0:
-                                band = bands.value.split(",")
+                                band = int(bands.value)
                             if len(vmin.value) > 0:
                                 vis_min = float(vmin.value)
                             if len(vmax.value) > 0:
                                 vis_max = float(vmax.value)
                             if len(nodata.value) > 0:
                                 vis_nodata = float(nodata.value)
-                        except Exception as _:
+                        except:
                             pass
 
                         m.add_local_tile(
@@ -520,10 +519,10 @@ def change_basemap(m):
     Args:
         m (object): geemap.Map()
     """
-    from .geemap import basemaps
+    from .geemap import basemap_tiles
 
     dropdown = widgets.Dropdown(
-        options=list(basemaps.keys()),
+        options=list(basemap_tiles.keys()),
         value="ROADMAP",
         layout=widgets.Layout(width="200px")
         # description="Basemaps",
@@ -545,7 +544,7 @@ def change_basemap(m):
             old_basemap = m.layers[0]
         else:
             old_basemap = m.layers[1]
-        m.substitute_layer(old_basemap, basemaps[basemap_name])
+        m.substitute_layer(old_basemap, basemap_tiles[basemap_name])
 
     dropdown.observe(on_click, "value")
 
@@ -663,9 +662,9 @@ def collect_samples(m):
             if len(color.value) != 7:
                 color.value = "#3388ff"
             draw_control = ipyleaflet.DrawControl(
-                marker={"shapeOptions": {"color": color.value}, "repeatMode": False},
-                rectangle={"shapeOptions": {"color": color.value}, "repeatMode": False},
-                polygon={"shapeOptions": {"color": color.value}, "repeatMode": False},
+                marker={"shapeOptions": {"color": color.value}, "repeatMode": True},
+                rectangle={"shapeOptions": {"color": color.value}, "repeatMode": True},
+                polygon={"shapeOptions": {"color": color.value}, "repeatMode": True},
                 circlemarker={},
                 polyline={},
                 edit=False,
@@ -2657,48 +2656,77 @@ def sankee_gui(m=None):
 
     region.observe(region_changed, "value")
 
-    sankee_datasets = [
-        sankee.datasets.NLCD,
-        sankee.datasets.MODIS_LC_TYPE1,
-        sankee.datasets.CGLS_LC100,
-        sankee.datasets.LCMS_LU,
-        sankee.datasets.LCMS_LC,
-    ]
-    dataset_options = {dataset.name: dataset for dataset in sankee_datasets}
-    default_dataset = sankee_datasets[0]
-
     dataset = widgets.Dropdown(
-        options=dataset_options.keys(),
-        value=default_dataset.name,
+        options=[
+            "NLCD - National Land Cover Database",
+            "MCD12Q1 - MODIS Global Land Cover",
+            "CGLS - Copernicus Global Land Cover",
+            "LCMS - Land Change Monitoring System",
+        ],
+        value="NLCD - National Land Cover Database",
         description="Dataset:",
         layout=widgets.Layout(width=widget_width, padding=padding),
         style={"description_width": "initial"},
     )
 
+    NLCD_options = ["2001", "2004", "2006", "2008", "2011", "2013", "2016"]
+    MODIS_options = [str(y) for y in range(2001, 2020)]
+    CGLS_options = [str(y) for y in range(2015, 2020)]
+    LCMS_options = [str(y) for y in range(1985, 2021)]
+
     before = widgets.Dropdown(
-        options=default_dataset.years,
-        value=default_dataset.years[0],
+        options=NLCD_options,
+        value="2001",
         description="Before:",
         layout=widgets.Layout(width="123px", padding=padding),
         style={"description_width": "initial"},
     )
 
     after = widgets.Dropdown(
-        options=default_dataset.years,
-        value=default_dataset.years[-1],
+        options=NLCD_options,
+        value="2016",
         description="After:",
         layout=widgets.Layout(width="123px", padding=padding),
         style={"description_width": "initial"},
     )
 
     def dataset_changed(change):
-        selected = dataset_options[change["new"]]
-        before.options = selected.years
-        after.options = selected.years
-        before.value = selected.years[0]
-        after.value = selected.years[-1]
+        if change["new"] == "NLCD - National Land Cover Database":
+            before.options = NLCD_options
+            after.options = NLCD_options
+            before.value = NLCD_options[0]
+            after.value = NLCD_options[-1]
+        elif change["new"] == "MCD12Q1 - MODIS Global Land Cover":
+            before.options = MODIS_options
+            after.options = MODIS_options
+            before.value = MODIS_options[0]
+            after.value = MODIS_options[-1]
+        elif change["new"] == "CGLS - Copernicus Global Land Cover":
+            before.options = CGLS_options
+            after.options = CGLS_options
+            before.value = CGLS_options[0]
+            after.value = CGLS_options[-1]
+        elif change["new"] == "LCMS - Land Change Monitoring System":
+            before.options = LCMS_options
+            after.options = LCMS_options
+            before.value = LCMS_options[0]
+            after.value = LCMS_options[-1]
 
     dataset.observe(dataset_changed, "value")
+
+    dataset_template = {
+        "NLCD - National Land Cover Database": sankee.datasets.NLCD2016,
+        "MCD12Q1 - MODIS Global Land Cover": sankee.datasets.MODIS_LC_TYPE1,
+        "CGLS - Copernicus Global Land Cover": sankee.datasets.CGLS_LC100,
+        "LCMS - Land Change Monitoring System": sankee.datasets.LCMS_LC,
+    }
+
+    band_name = {
+        "NLCD - National Land Cover Database": "landcover",
+        "MCD12Q1 - MODIS Global Land Cover": "LC_Type1",
+        "CGLS - Copernicus Global Land Cover": "discrete_classification",
+        "LCMS - Land Change Monitoring System": "Land_Cover",
+    }
 
     samples = widgets.IntText(
         value=1000,
@@ -2963,12 +2991,62 @@ def sankee_gui(m=None):
                 print("Running ...")
 
             if m is not None:
-                selected = dataset_options[dataset.value]
-                before_year = before.value
-                after_year = after.value
+                exclude_classes = []
 
-                image1 = selected.get_year(before_year)
-                image2 = selected.get_year(after_year)
+                if "NLCD" in dataset.value:
+                    before_img = ee.Image(f"USGS/NLCD/NLCD{before.value}")
+                    after_img = ee.Image(f"USGS/NLCD/NLCD{after.value}")
+                    vis_params = {}
+                elif "MODIS" in dataset.value:
+                    before_img = ee.Image(f"MODIS/006/MCD12Q1/{before.value}_01_01")
+                    after_img = ee.Image(f"MODIS/006/MCD12Q1/{after.value}_01_01")
+                    vis_params = {
+                        "min": 1.0,
+                        "max": 17.0,
+                        "palette": [
+                            "05450a",
+                            "086a10",
+                            "54a708",
+                            "78d203",
+                            "009900",
+                            "c6b044",
+                            "dcd159",
+                            "dade48",
+                            "fbff13",
+                            "b6ff05",
+                            "27ff87",
+                            "c24f44",
+                            "a5a5a5",
+                            "ff6d4c",
+                            "69fff8",
+                            "f9ffa4",
+                            "1c0dff",
+                        ],
+                    }
+                elif "CGLS" in dataset.value:
+                    before_img = ee.Image(
+                        f"COPERNICUS/Landcover/100m/Proba-V-C3/Global/{before.value}"
+                    )
+                    after_img = ee.Image(
+                        f"COPERNICUS/Landcover/100m/Proba-V-C3/Global/{after.value}"
+                    )
+                    vis_params = {}
+                elif "LCMS" in dataset.value:
+                    before_img = ee.Image(
+                        f"USFS/GTAC/LCMS/v2020-5/LCMS_CONUS_v2020-5_{before.value}"
+                    )
+                    after_img = ee.Image(
+                        f"USFS/GTAC/LCMS/v2020-5/LCMS_CONUS_v2020-5_{after.value}"
+                    )
+                    vis_params = {}
+                    # LCMS Land Cover class 15 is a no data mask and should be excluded
+                    exclude_classes.append(15)
+
+                img_list = [before_img, after_img]
+                label_list = [before.value, after.value]
+
+                image1 = before_img.select(band_name[dataset.value])
+                image2 = after_img.select(band_name[dataset.value])
 
                 if region.value != "User-drawn ROI" or (
                     region.value == "User-drawn ROI" and m.user_roi is not None
@@ -2997,12 +3075,15 @@ def sankee_gui(m=None):
                     else:
                         plot_title = None
                     m.default_style = {"cursor": "wait"}
-                    plot = selected.sankify(
-                        years=[before_year, after_year],
-                        region=geom,
+                    plot = sankee.sankify(
+                        img_list,
+                        geom,
+                        label_list,
+                        dataset_template[dataset.value],
                         max_classes=classes.value,
                         n=int(samples.value),
                         title=plot_title,
+                        exclude=exclude_classes,
                     )
 
                     output.clear_output()
@@ -3032,8 +3113,8 @@ def sankee_gui(m=None):
                         display(plot)
 
                     m.sankee_plot = plot
-                    m.addLayer(image1, {}, str(before_year))
-                    m.addLayer(image2, {}, str(after_year))
+                    m.addLayer(image1, vis_params, before.value)
+                    m.addLayer(image2, vis_params, after.value)
                     m.default_style = {"cursor": "default"}
 
                 else:
@@ -3078,7 +3159,7 @@ def split_basemaps(
     m, layers_dict=None, left_name=None, right_name=None, width="120px", **kwargs
 ):
 
-    from .geemap import basemaps
+    from .geemap import basemap_tiles
 
     controls = m.controls
     layers = m.layers
@@ -3090,12 +3171,12 @@ def split_basemaps(
 
     if layers_dict is None:
         layers_dict = {}
-        keys = dict(basemaps).keys()
+        keys = dict(basemap_tiles).keys()
         for key in keys:
-            if isinstance(basemaps[key], ipyleaflet.WMSLayer):
+            if isinstance(basemap_tiles[key], ipyleaflet.WMSLayer):
                 pass
             else:
-                layers_dict[key] = basemaps[key]
+                layers_dict[key] = basemap_tiles[key]
 
     keys = list(layers_dict.keys())
     if left_name is None:
@@ -3525,7 +3606,7 @@ def plotly_basemap_gui(canvas, map_min_width="78%", map_max_width="98%"):
     Args:
         m (object): geemap.Map.
     """
-    from .plotlymap import basemaps
+    from .plotlymap import plotly_basemaps
 
     m = canvas.map
     layer_count = len(m.layout.mapbox.layers)
@@ -3538,7 +3619,7 @@ def plotly_basemap_gui(canvas, map_min_width="78%", map_max_width="98%"):
     m.add_basemap(value)
 
     dropdown = widgets.Dropdown(
-        options=list(basemaps.keys()),
+        options=list(plotly_basemaps.keys()),
         value=value,
         layout=widgets.Layout(width="200px"),
     )
@@ -3845,7 +3926,7 @@ def inspector_gui(m=None):
     """Generates a tool GUI template using ipywidgets.
 
     Args:
-        m (geemap.Map, optional): The leaflet Map object. Defaults to None.
+        m (leafmap.Map, optional): The leaflet Map object. Defaults to None.
 
     Returns:
         ipywidgets: The tool GUI widget.

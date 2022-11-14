@@ -16,9 +16,9 @@ import collections
 import os
 import requests
 import folium
+import here_map_widget
 import ipyleaflet
 import xyzservices.providers as xyz
-from xyzservices import TileProvider
 from .common import check_package, planet_tiles
 
 # Custom XYZ tile services.
@@ -133,25 +133,9 @@ wms_tiles = {
         "transparent": True,
     },
     "USGS NAIP Imagery": {
-        "url": "https://imagery.nationalmap.gov/arcgis/services/USGSNAIPImagery/ImageServer/WMSServer?",
-        "layers": "USGSNAIPImagery:NaturalColor",
+        "url": "https://services.nationalmap.gov/arcgis/services/USGSNAIPImagery/ImageServer/WMSServer?",
+        "layers": "0",
         "name": "USGS NAIP Imagery",
-        "attribution": "USGS",
-        "format": "image/png",
-        "transparent": True,
-    },
-    "USGS NAIP Imagery False Color": {
-        "url": "https://imagery.nationalmap.gov/arcgis/services/USGSNAIPImagery/ImageServer/WMSServer?",
-        "layers": "USGSNAIPImagery:FalseColorComposite",
-        "name": "USGS NAIP Imagery False Color",
-        "attribution": "USGS",
-        "format": "image/png",
-        "transparent": True,
-    },
-    "USGS NAIP Imagery NDVI": {
-        "url": "https://imagery.nationalmap.gov/arcgis/services/USGSNAIPImagery/ImageServer/WMSServer?",
-        "layers": "USGSNAIPImagery:NDVI_Color",
-        "name": "USGS NAIP Imagery NDVI",
         "attribution": "USGS",
         "format": "image/png",
         "transparent": True,
@@ -172,34 +156,65 @@ wms_tiles = {
         "format": "image/png",
         "transparent": True,
     },
-    "ESA WorldCover 2020": {
-        "url": "https://services.terrascope.be/wms/v2",
-        "layers": "WORLDCOVER_2020_MAP",
-        "name": "ESA Worldcover 2020",
-        "attribution": "ESA",
-        "format": "image/png",
-        "transparent": True,
-    },
-    "ESA WorldCover 2020 S2 FCC": {
-        "url": "https://services.terrascope.be/wms/v2",
-        "layers": "WORLDCOVER_2020_S2_FCC",
-        "name": "ESA Worldcover 2020 S2 FCC",
-        "attribution": "ESA",
-        "format": "image/png",
-        "transparent": True,
-    },
-    "ESA WorldCover 2020 S2 TCC": {
-        "url": "https://services.terrascope.be/wms/v2",
-        "layers": "WORLDCOVER_2020_S2_TCC",
-        "name": "ESA Worldcover 2020 S2 TCC",
-        "attribution": "ESA",
-        "format": "image/png",
-        "transparent": True,
-    },
+}
+
+# Built-in heremap tile services.
+here_tiles = {
+    "HERE_RASTER_NORMAL_MAP": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.map
+    ),
+    "HERE_RASTER_NORMAL_BASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.base
+    ),
+    "HERE_RASTER_NORMAL_BASE_NIGHT": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.basenight
+    ),
+    "HERE_RASTER_NORMAL_LABELS": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.labels
+    ),
+    "HERE_RASTER_NORMAL_TRANSIT": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.transit
+    ),
+    "HERE_RASTER_NORMAL_XBASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.xbase
+    ),
+    "HERE_RASTER_NORMAL_XBASE_NIGHT": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.normal.xbasenight
+    ),
+    "HERE_RASTER_SATELLITE_MAP": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.satellite.map
+    ),
+    "HERE_RASTER_SATELLITE_LABELS": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.satellite.labels
+    ),
+    "HERE_RASTER_SATELLITE_BASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.satellite.base
+    ),
+    "HERE_RASTER_SATELLITE_XBASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.satellite.xbase
+    ),
+    "HERE_RASTER_TERRAIN_MAP": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.terrain.map
+    ),
+    "HERE_RASTER_TERRAIN_LABELS": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.terrain.labels
+    ),
+    "HERE_RASTER_TERRAIN_BASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.terrain.base
+    ),
+    "HERE_RASTER_TERRAIN_XBASE": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.raster.terrain.xbase
+    ),
+    "HERE_VECTOR_NORMAL_MAP": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.vector.normal.map
+    ),
+    "HERE_VECTOR_NORMAL_TRUCK": here_map_widget.DefaultLayers(
+        layer_name=here_map_widget.DefaultLayerNames.vector.normal.truck
+    ),
 }
 
 
-def get_xyz_dict(free_only=True, _collection=None, _output=None):
+def get_xyz_dict(free_only=True):
     """Returns a dictionary of xyz services.
 
     Args:
@@ -209,20 +224,36 @@ def get_xyz_dict(free_only=True, _collection=None, _output=None):
         dict: A dictionary of xyz services.
     """
 
-    if _collection is None:
-        _collection = xyz
+    xyz_dict = {}
+    for item in xyz.values():
+        try:
+            name = item["name"]
+            tile = eval("xyz." + name)
+            if eval("xyz." + name + ".requires_token()"):
+                if free_only:
+                    pass
+                else:
+                    xyz_dict[name] = tile
+            else:
+                xyz_dict[name] = tile
 
-    if _output is None:
-        _output = {}
+        except Exception:
+            for sub_item in item:
+                name = item[sub_item]["name"]
+                try:
+                    tile = eval("xyz." + name)
+                    if eval("xyz." + name + ".requires_token()"):
+                        if free_only:
+                            pass
+                        else:
+                            xyz_dict[name] = tile
+                    else:
+                        xyz_dict[name] = tile
+                except:
+                    pass
 
-    for v in _collection.values():
-        if isinstance(v, TileProvider):
-            if not (v.requires_token() and free_only):
-                _output[v.name] = v
-        else:  # it's a Bunch
-            get_xyz_dict(free_only, v, _output)
-
-    return collections.OrderedDict(sorted(_output.items()))
+    xyz_dict = collections.OrderedDict(sorted(xyz_dict.items()))
+    return xyz_dict
 
 
 def xyz_to_leaflet():
@@ -233,30 +264,41 @@ def xyz_to_leaflet():
     """
     leaflet_dict = {}
 
-    for key, tile in xyz_tiles.items():
-        name = tile["name"]
-        url = tile["url"]
-        attribution = tile["attribution"]
+    for key in xyz_tiles:
+        name = xyz_tiles[key]["name"]
+        url = xyz_tiles[key]["url"]
+        attribution = xyz_tiles[key]["attribution"]
         leaflet_dict[key] = ipyleaflet.TileLayer(
             url=url, name=name, attribution=attribution, max_zoom=22
         )
 
-    for key, tile in wms_tiles.items():
+    for key in wms_tiles:
+        name = wms_tiles[key]["name"]
+        url = wms_tiles[key]["url"]
+        layers = wms_tiles[key]["layers"]
+        fmt = wms_tiles[key]["format"]
+        transparent = wms_tiles[key]["transparent"]
+        attribution = wms_tiles[key]["attribution"]
         leaflet_dict[key] = ipyleaflet.WMSLayer(
-            url=tile["url"],
-            layers=tile["layers"],
-            name=tile["name"],
-            attribution=tile["attribution"],
-            format=tile["format"],
-            transparent=tile["transparent"],
+            url=url,
+            layers=layers,
+            name=name,
+            attribution=attribution,
+            format=fmt,
+            transparent=transparent,
         )
 
-    for item in get_xyz_dict().values():
-        leaflet_dict[item.name] = ipyleaflet.TileLayer(
-            url=item.build_url(),
-            name=item.name,
-            max_zoom=item.get("max_zoom", 22),
-            attribution=item.attribution,
+    xyz_dict = get_xyz_dict()
+    for item in xyz_dict:
+        name = xyz_dict[item].name
+        url = xyz_dict[item].build_url()
+        attribution = xyz_dict[item].attribution
+        if "max_zoom" in xyz_dict[item].keys():
+            max_zoom = xyz_dict[item]["max_zoom"]
+        else:
+            max_zoom = 22
+        leaflet_dict[name] = ipyleaflet.TileLayer(
+            url=url, name=name, max_zoom=max_zoom, attribution=attribution
         )
 
     if os.environ.get("PLANET_API_KEY") is not None:
@@ -279,19 +321,20 @@ def xyz_to_pydeck():
 
     pydeck_dict = {}
 
-    for key, tile in xyz_tiles.items():
-        url = tile["url"]
+    for key in xyz_tiles:
+        url = xyz_tiles[key]["url"]
         pydeck_dict[key] = url
 
-    for key, item in get_xyz_dict().items():
-        url = item.build_url()
-        pydeck_dict[key] = url
+    xyz_dict = get_xyz_dict()
+    for item in xyz_dict:
+        url = xyz_dict[item].build_url()
+        pydeck_dict[item] = url
 
         if os.environ.get("PLANET_API_KEY") is not None:
 
             planet_dict = planet_tiles(tile_format="ipyleaflet")
-            for id_, tile in planet_dict.items():
-                pydeck_dict[id_] = tile.url
+            for tile in planet_dict:
+                pydeck_dict[tile] = planet_dict[tile].url
 
     pdk.settings.custom_libraries = [
         {
@@ -314,34 +357,51 @@ def xyz_to_folium():
     """
     folium_dict = {}
 
-    for key, tile in xyz_tiles.items():
+    for key in xyz_tiles:
+        name = xyz_tiles[key]["name"]
+        url = xyz_tiles[key]["url"]
+        attribution = xyz_tiles[key]["attribution"]
         folium_dict[key] = folium.TileLayer(
-            tiles=tile["url"],
-            attr=tile["attribution"],
-            name=tile["name"],
+            tiles=url,
+            attr=attribution,
+            name=name,
             overlay=True,
             control=True,
             max_zoom=22,
         )
 
-    for key, tile in wms_tiles.items():
+    for key in wms_tiles:
+        name = wms_tiles[key]["name"]
+        url = wms_tiles[key]["url"]
+        layers = wms_tiles[key]["layers"]
+        fmt = wms_tiles[key]["format"]
+        transparent = wms_tiles[key]["transparent"]
+        attribution = wms_tiles[key]["attribution"]
         folium_dict[key] = folium.WmsTileLayer(
-            url=tile["url"],
-            layers=tile["layers"],
-            name=tile["name"],
-            attr=tile["attribution"],
-            fmt=tile["format"],
-            transparent=tile["transparent"],
+            url=url,
+            layers=layers,
+            name=name,
+            attr=attribution,
+            fmt=fmt,
+            transparent=transparent,
             overlay=True,
             control=True,
         )
 
-    for item in get_xyz_dict().values():
-        folium_dict[item.name] = folium.TileLayer(
-            tiles=item.build_url(),
-            attr=item.attribution,
-            name=item.name,
-            max_zoom=item.get("max_zoom", 22),
+    xyz_dict = get_xyz_dict()
+    for item in xyz_dict:
+        name = xyz_dict[item].name
+        url = xyz_dict[item].build_url()
+        attribution = xyz_dict[item].attribution
+        if "max_zoom" in xyz_dict[item].keys():
+            max_zoom = xyz_dict[item]["max_zoom"]
+        else:
+            max_zoom = 22
+        folium_dict[name] = folium.TileLayer(
+            tiles=url,
+            attr=attribution,
+            name=name,
+            max_zoom=max_zoom,
             overlay=True,
             control=True,
         )
@@ -362,22 +422,29 @@ def xyz_to_plotly():
     """
     plotly_dict = {}
 
-    for key, tile in xyz_tiles.items():
+    for key in xyz_tiles:
+        url = xyz_tiles[key]["url"]
+        attribution = xyz_tiles[key]["attribution"]
         plotly_dict[key] = {
             "below": "traces",
             "sourcetype": "raster",
-            "sourceattribution": tile["attribution"],
-            "source": [tile["url"]],
+            "sourceattribution": attribution,
+            "source": [url],
             "name": key,
         }
 
-    for item in get_xyz_dict().values():
-        plotly_dict[item.name] = {
+    xyz_dict = get_xyz_dict()
+    for item in xyz_dict:
+        name = xyz_dict[item].name
+        url = xyz_dict[item].build_url()
+        attribution = xyz_dict[item].attribution
+
+        plotly_dict[name] = {
             "below": "traces",
             "sourcetype": "raster",
-            "sourceattribution": item.attribution,
-            "source": [item.build_url()],
-            "name": item.name,
+            "sourceattribution": attribution,
+            "source": [url],
+            "name": name,
         }
 
     return plotly_dict
@@ -389,85 +456,30 @@ def xyz_to_heremap():
     Returns:
         dict: A dictionary of heremap tile layers.
     """
-
-    try:
-        import here_map_widget
-    except ImportError:
-        raise ImportError(
-            'This module requires the hermap package. Please install it using "pip install here-map-widget-for-jupyter".'
-        )
-
-    # Built-in heremap tile services.
-    here_tiles = {
-        "HERE_RASTER_NORMAL_MAP": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.map
-        ),
-        "HERE_RASTER_NORMAL_BASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.base
-        ),
-        "HERE_RASTER_NORMAL_BASE_NIGHT": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.basenight
-        ),
-        "HERE_RASTER_NORMAL_LABELS": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.labels
-        ),
-        "HERE_RASTER_NORMAL_TRANSIT": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.transit
-        ),
-        "HERE_RASTER_NORMAL_XBASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.xbase
-        ),
-        "HERE_RASTER_NORMAL_XBASE_NIGHT": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.normal.xbasenight
-        ),
-        "HERE_RASTER_SATELLITE_MAP": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.satellite.map
-        ),
-        "HERE_RASTER_SATELLITE_LABELS": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.satellite.labels
-        ),
-        "HERE_RASTER_SATELLITE_BASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.satellite.base
-        ),
-        "HERE_RASTER_SATELLITE_XBASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.satellite.xbase
-        ),
-        "HERE_RASTER_TERRAIN_MAP": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.terrain.map
-        ),
-        "HERE_RASTER_TERRAIN_LABELS": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.terrain.labels
-        ),
-        "HERE_RASTER_TERRAIN_BASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.terrain.base
-        ),
-        "HERE_RASTER_TERRAIN_XBASE": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.raster.terrain.xbase
-        ),
-        "HERE_VECTOR_NORMAL_MAP": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.vector.normal.map
-        ),
-        "HERE_VECTOR_NORMAL_TRUCK": here_map_widget.DefaultLayers(
-            layer_name=here_map_widget.DefaultLayerNames.vector.normal.truck
-        ),
-    }
-
     heremap_dict = {}
 
-    for key, tile in xyz_tiles.items():
+    for key in xyz_tiles:
+        name = xyz_tiles[key]["name"]
+        url = xyz_tiles[key]["url"]
+        attribution = xyz_tiles[key]["attribution"]
         heremap_dict[key] = here_map_widget.TileLayer(
             provider=here_map_widget.ImageTileProvider(
-                url=tile["url"], attribution=tile["attribution"], name=tile["name"]
+                url=url, attribution=attribution, name=name
             )
         )
 
-    for item in get_xyz_dict().values():
-        heremap_dict[item.name] = here_map_widget.TileLayer(
+    xyz_dict = get_xyz_dict()
+    for item in xyz_dict:
+        name = xyz_dict[item].name
+        url = xyz_dict[item].build_url()
+        attribution = xyz_dict[item].attribution
+        if "max_zoom" in xyz_dict[item].keys():
+            max_zoom = xyz_dict[item]["max_zoom"]
+        else:
+            max_zoom = 22
+        heremap_dict[name] = here_map_widget.TileLayer(
             provider=here_map_widget.ImageTileProvider(
-                url=item.build_url(),
-                attribution=item.attribution,
-                name=item.name,
-                max_zoom=item.get("max_zoom", 22),
+                url=url, attribution=attribution, name=name, max_zoom=max_zoom
             )
         )
 
