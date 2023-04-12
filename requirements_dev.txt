@@ -28,5 +28,5 @@ rio-cogeo
 rioxarray
 sqlalchemy
 streamlit-folium
-voila
+voila==0.3.5
 xarray_leaflet         
